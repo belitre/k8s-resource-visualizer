@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go version:*)",
+      "Bash(npm --version)",
+      "Bash(go mod:*)",
+      "Bash(go vet:*)",
+      "Bash(source ~/.nvm/nvm.sh)",
+      "Bash(nvm use:*)",
+      "Bash(npm run:*)",
+      "Bash(go build:*)",
+      "Bash(npm install:*)",
+      "Bash(npm test:*)",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}
