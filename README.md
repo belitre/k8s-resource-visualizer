@@ -1,5 +1,9 @@
 # K8s Resource Visualizer
 
+[![CI](https://github.com/belitre/k8s-resource-visualizer/actions/workflows/ci.yml/badge.svg)](https://github.com/belitre/k8s-resource-visualizer/actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/belitre/k8s-resource-visualizer)](go.mod)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 A real-time Kubernetes resource visualizer with a dark-themed UI. Watches actual resources (Pods, Deployments, Services, etc.) for CREATED, UPDATED, and DELETED actions and displays them as colored cards on a canvas. Deploy one backend per cluster and connect the frontend to multiple backends to see resource changes from all clusters.
 
 ## Architecture
@@ -207,7 +211,7 @@ Deploy the backend to each cluster with a different `CLUSTER_NAME`. Configure `f
 
 ## License
 
-MIT
+Apache 2.0 — see [LICENSE](LICENSE) for details.
 
 ---
 
