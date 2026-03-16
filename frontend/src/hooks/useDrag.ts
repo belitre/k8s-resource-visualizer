@@ -18,7 +18,7 @@ interface UseDragCallbacks {
 const DRAG_THRESHOLD_PX = 5;
 
 export function useDrag(
-  cardRef: RefObject<HTMLDivElement>,
+  cardRef: RefObject<HTMLDivElement | null>,
   initialPos: { x: number; y: number },
   callbacks: UseDragCallbacks
 ) {

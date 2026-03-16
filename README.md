@@ -1,5 +1,9 @@
 # K8s Resource Visualizer
 
+[![CI](https://github.com/belitre/k8s-resource-visualizer/actions/workflows/ci.yml/badge.svg)](https://github.com/belitre/k8s-resource-visualizer/actions/workflows/ci.yml)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/belitre/k8s-resource-visualizer)](go.mod)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 A real-time Kubernetes resource visualizer with a dark-themed UI. Watches actual resources (Pods, Deployments, Services, etc.) for CREATED, UPDATED, and DELETED actions and displays them as colored cards on a canvas. Deploy one backend per cluster and connect the frontend to multiple backends to see resource changes from all clusters.
 
 ## Architecture
@@ -108,9 +112,10 @@ make dev-frontend
 
 | Variable       | Default   | Description                          |
 |----------------|-----------|--------------------------------------|
-| `CLUSTER_NAME` | `unknown` | Name shown in the frontend UI        |
-| `PORT`         | `8080`    | HTTP listen port                     |
-| `CONFIG_PATH`  |           | Path to backend config YAML file     |
+| `CLUSTER_NAME`   | `unknown` | Name shown in the frontend UI                          |
+| `PORT`           | `8080`    | HTTP listen port                                       |
+| `CONFIG_PATH`    |           | Path to backend config YAML file                       |
+| `SERVE_FRONTEND` | `true`    | Set to `false` to disable the UI (API/WebSocket only)  |
 
 ### Backend Config File (`config.yaml`)
 
@@ -203,11 +208,13 @@ kubectl apply -f k8s/httproute.yaml
 
 ### Multi-cluster setup
 
-Deploy the backend to each cluster with a different `CLUSTER_NAME`. Configure `frontend/public/config.json` with all backend URLs before building, or add them at runtime via the sidebar.
+Deploy to each cluster with a different `CLUSTER_NAME`. On clusters where you only need the API/WebSocket (no UI), set `SERVE_FRONTEND=false` — one deployment serves the frontend and connects to all the others as backends.
+
+Configure `frontend/public/config.json` with all backend URLs before building, or add them at runtime via the sidebar.
 
 ## License
 
-MIT
+Apache 2.0 — see [LICENSE](LICENSE) for details.
 
 ---
 

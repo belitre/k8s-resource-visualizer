@@ -27,6 +27,8 @@ spec:
               value: "my-cluster"  # Change to your cluster name
             - name: PORT
               value: "8080"
+            - name: SERVE_FRONTEND
+              value: "true"  # Set to "false" on backend-only deployments
           resources:
             requests:
               cpu: 50m
