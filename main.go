@@ -64,9 +64,15 @@ func main() {
 		frontendFS = sub
 	}
 
+	frontendConfig, err := os.ReadFile("/etc/k8s-resource-visualizer/config.json")
+	if err != nil {
+		frontendConfig = nil
+	}
+
 	handler := &api.Handler{
-		Manager: manager,
-		Hub:     hub,
+		Manager:        manager,
+		Hub:            hub,
+		FrontendConfig: frontendConfig,
 	}
 
 	mux := http.NewServeMux()
