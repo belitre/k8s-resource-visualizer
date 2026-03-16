@@ -18,8 +18,9 @@ var upgrader = websocket.Upgrader{
 
 // Handler holds the HTTP handlers.
 type Handler struct {
-	Manager *k8s.Manager
-	Hub     *ws.Hub
+	Manager        *k8s.Manager
+	Hub            *ws.Hub
+	FrontendConfig []byte // when non-nil, overrides /config.json
 }
 
 // InfoResponse is returned by GET /api/info.
@@ -34,9 +35,18 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, frontendFS fs.FS) {
 	mux.HandleFunc("GET /api/resources", h.handleResources)
 	mux.HandleFunc("GET /ws", h.handleWebSocket)
 
+	if h.FrontendConfig != nil {
+		mux.HandleFunc("GET /config.json", h.handleFrontendConfig)
+	}
+
 	if frontendFS != nil {
 		mux.Handle("GET /", http.FileServerFS(frontendFS))
 	}
+}
+
+func (h *Handler) handleFrontendConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(h.FrontendConfig)
 }
 
 func (h *Handler) handleInfo(w http.ResponseWriter, r *http.Request) {

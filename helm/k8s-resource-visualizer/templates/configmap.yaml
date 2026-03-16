@@ -1,0 +1,24 @@
+{{- if .Values.serveFrontend }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "k8s-resource-visualizer.fullname" . }}-frontend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "k8s-resource-visualizer.labels" . | nindent 4 }}
+data:
+  config.json: {{ include "k8s-resource-visualizer.frontendConfig" . | quote }}
+{{- end }}
+{{- if .Values.backendConfig }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "k8s-resource-visualizer.fullname" . }}-backend
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "k8s-resource-visualizer.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- toYaml .Values.backendConfig | nindent 4 }}
+{{- end }}

@@ -109,6 +109,48 @@ func TestHandleResources(t *testing.T) {
 	}
 }
 
+func TestHandleFrontendConfig(t *testing.T) {
+	_, mux := newTestHandler(nil)
+
+	// Without FrontendBackends set, /config.json is not overridden
+	req := httptest.NewRequest("GET", "/config.json", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 without FrontendBackends, got %d", w.Code)
+	}
+
+	// With FrontendBackends set, /config.json returns the override
+	k8sClient := fake.NewSimpleClientset()
+	scheme := runtime.NewScheme()
+	dynClient := fakedynamic.NewSimpleDynamicClient(scheme)
+	manager := k8s.NewManagerForTesting("test-cluster", k8sClient, dynClient, k8sClient.Discovery(), &config.Config{})
+	hub := ws.NewHub()
+
+	h := &Handler{
+		Manager:        manager,
+		Hub:            hub,
+		FrontendConfig: []byte(`{"backends":[{"url":"http://a:8080"},{"url":"http://b:8080"}]}`),
+	}
+	mux2 := http.NewServeMux()
+	h.RegisterRoutes(mux2, nil)
+
+	req2 := httptest.NewRequest("GET", "/config.json", nil)
+	w2 := httptest.NewRecorder()
+	mux2.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", w2.Code, http.StatusOK)
+	}
+	var result map[string][]any
+	if err := json.NewDecoder(w2.Body).Decode(&result); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if len(result["backends"]) != 2 {
+		t.Errorf("got %d backends, want 2", len(result["backends"]))
+	}
+}
+
 func TestServeFrontend(t *testing.T) {
 	_, mux := newTestHandler(nil)
 

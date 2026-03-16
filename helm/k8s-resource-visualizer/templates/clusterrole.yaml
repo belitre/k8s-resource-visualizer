@@ -1,0 +1,8 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "k8s-resource-visualizer.fullname" . }}
+  labels:
+    {{- include "k8s-resource-visualizer.labels" . | nindent 4 }}
+rules:
+  {{- include "k8s-resource-visualizer.clusterRoleRules" . | nindent 2 }}

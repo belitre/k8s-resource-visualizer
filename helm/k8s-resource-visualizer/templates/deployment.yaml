@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "k8s-resource-visualizer.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "k8s-resource-visualizer.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "k8s-resource-visualizer.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "k8s-resource-visualizer.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "k8s-resource-visualizer.serviceAccountName" . }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.port }}
+              protocol: TCP
+          env:
+            - name: CLUSTER_NAME
+              value: {{ .Values.clusterName | quote }}
+            - name: PORT
+              value: {{ .Values.port | quote }}
+            - name: SERVE_FRONTEND
+              value: {{ .Values.serveFrontend | quote }}
+            {{- if .Values.backendConfig }}
+            - name: CONFIG_PATH
+              value: /etc/k8s-resource-visualizer/backend/config.yaml
+            {{- end }}
+          volumeMounts:
+            {{- if .Values.serveFrontend }}
+            - name: frontend-config
+              mountPath: /etc/k8s-resource-visualizer
+              readOnly: true
+            {{- end }}
+            {{- if .Values.backendConfig }}
+            - name: backend-config
+              mountPath: /etc/k8s-resource-visualizer/backend
+              readOnly: true
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        {{- if .Values.serveFrontend }}
+        - name: frontend-config
+          configMap:
+            name: {{ include "k8s-resource-visualizer.fullname" . }}-frontend
+        {{- end }}
+        {{- if .Values.backendConfig }}
+        - name: backend-config
+          configMap:
+            name: {{ include "k8s-resource-visualizer.fullname" . }}-backend
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

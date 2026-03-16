@@ -1,0 +1,85 @@
+replicaCount: 1
+
+image:
+  repository: k8s-resource-visualizer
+  tag: latest
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+clusterName: "unknown"
+port: 8080
+serveFrontend: true
+
+# Frontend config — only used when serveFrontend=true.
+# The local backend (this instance) is always included automatically.
+frontend:
+  # URL of this instance as seen from the user's browser.
+  selfUrl: "http://localhost:8080"
+  # Optional hex color for this cluster in the UI.
+  selfColor: ""
+  # Additional backend clusters to pre-configure.
+  backends: []
+  # - url: "http://cluster-b.example.com"
+  #   color: "#3b82f6"
+
+# Optional backend resource/namespace filter.
+# When set, a ConfigMap is created and mounted as the backend config file (CONFIG_PATH).
+# By default everything is watched. Use include for allowlist mode, exclude to skip specific items.
+backendConfig: {}
+# resources:
+#   include:   # if set, ONLY watch these
+#     - group: "apps"
+#       version: "v1"
+#       resource: "deployments"
+#     - group: ""
+#       version: "v1"
+#       resource: "pods"
+#   exclude:   # always skipped, even if in include
+#     - group: ""
+#       version: "v1"
+#       resource: "events"
+# namespaces:
+#   include: []  # if set, ONLY watch these namespaces
+#   exclude:
+#     - kube-system
+
+serviceAccount:
+  create: true
+  name: ""
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: k8s-resource-visualizer.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+httpRoute:
+  enabled: false
+  parentRefs:
+    - name: my-gateway
+      namespace: default
+  hostnames: []
+  # - "events.example.com"
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
