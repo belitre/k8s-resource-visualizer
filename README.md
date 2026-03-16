@@ -112,9 +112,10 @@ make dev-frontend
 
 | Variable       | Default   | Description                          |
 |----------------|-----------|--------------------------------------|
-| `CLUSTER_NAME` | `unknown` | Name shown in the frontend UI        |
-| `PORT`         | `8080`    | HTTP listen port                     |
-| `CONFIG_PATH`  |           | Path to backend config YAML file     |
+| `CLUSTER_NAME`   | `unknown` | Name shown in the frontend UI                          |
+| `PORT`           | `8080`    | HTTP listen port                                       |
+| `CONFIG_PATH`    |           | Path to backend config YAML file                       |
+| `SERVE_FRONTEND` | `true`    | Set to `false` to disable the UI (API/WebSocket only)  |
 
 ### Backend Config File (`config.yaml`)
 
@@ -207,7 +208,9 @@ kubectl apply -f k8s/httproute.yaml
 
 ### Multi-cluster setup
 
-Deploy the backend to each cluster with a different `CLUSTER_NAME`. Configure `frontend/public/config.json` with all backend URLs before building, or add them at runtime via the sidebar.
+Deploy to each cluster with a different `CLUSTER_NAME`. On clusters where you only need the API/WebSocket (no UI), set `SERVE_FRONTEND=false` — one deployment serves the frontend and connects to all the others as backends.
+
+Configure `frontend/public/config.json` with all backend URLs before building, or add them at runtime via the sidebar.
 
 ## License
 

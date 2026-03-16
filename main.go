@@ -55,9 +55,13 @@ func main() {
 		log.Fatalf("failed to discover and watch resources: %v", err)
 	}
 
-	frontendFS, err := fs.Sub(frontendFiles, "frontend/dist")
-	if err != nil {
-		log.Fatalf("failed to create frontend fs: %v", err)
+	var frontendFS fs.FS
+	if os.Getenv("SERVE_FRONTEND") != "false" {
+		sub, err := fs.Sub(frontendFiles, "frontend/dist")
+		if err != nil {
+			log.Fatalf("failed to create frontend fs: %v", err)
+		}
+		frontendFS = sub
 	}
 
 	handler := &api.Handler{

@@ -34,8 +34,9 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, frontendFS fs.FS) {
 	mux.HandleFunc("GET /api/resources", h.handleResources)
 	mux.HandleFunc("GET /ws", h.handleWebSocket)
 
-	// Serve frontend static files
-	mux.Handle("GET /", http.FileServerFS(frontendFS))
+	if frontendFS != nil {
+		mux.Handle("GET /", http.FileServerFS(frontendFS))
+	}
 }
 
 func (h *Handler) handleInfo(w http.ResponseWriter, r *http.Request) {
