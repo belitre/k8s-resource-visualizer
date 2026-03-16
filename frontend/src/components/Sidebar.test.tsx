@@ -15,6 +15,8 @@ function renderSidebar(overrides = {}) {
     selectedResources: new Set<string>(),
     onToggleResource: vi.fn(),
     onToggleAllResources: vi.fn(),
+    collapsed: false,
+    onToggleCollapse: vi.fn(),
   };
   const props = { ...defaults, ...overrides };
   return { ...render(<Sidebar {...props} />), props };
