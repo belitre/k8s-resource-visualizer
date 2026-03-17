@@ -61,7 +61,7 @@ function BackendBridge({
     fetch(`${base}/api/proxy-backends`)
       .then((r) => r.json())
       .then((backends: ProxyBackendInfo[]) => {
-        if (backends.length > 0) discoveryCallbackRef.current(url, backends);
+        discoveryCallbackRef.current(url, backends);
       })
       .catch(() => {});
   }, [url, isProxy, status]);
@@ -81,8 +81,10 @@ export default function App() {
   const [backendUrls, setBackendUrls] = useState<string[]>([selfUrl]);
   const [backendInfoMap, setBackendInfoMap] = useState<Map<string, BackendInfo>>(new Map());
   const [configBackends, setConfigBackends] = useState<Set<string>>(new Set([selfUrl]));
-  // URLs auto-discovered via /api/proxy-backends — not removable, not recursed into
+  // URLs auto-discovered via /api/proxy-backends
   const [proxyBackendUrls, setProxyBackendUrls] = useState<Set<string>>(new Set());
+  // Tracks which proxy backend URLs were last reported by each primary, for cleanup on reconnect
+  const proxyBackendsByPrimaryRef = useRef<Map<string, Set<string>>>(new Map());
   const [disabledBackends, setDisabledBackends] = useState<Set<string>>(new Set());
   const [events, setEvents] = useState<VisualEvent[]>([]);
   const [duration, setDuration] = useState(10);
@@ -252,37 +254,38 @@ export default function App() {
 
   const handleProxyBackendsDiscovered = useCallback((primaryUrl: string, backends: ProxyBackendInfo[]) => {
     const base = primaryUrl.replace(/\/+$/, "");
-    const newUrls: string[] = [];
+    const newUrls = new Set<string>();
     for (const b of backends) {
       const proxyUrl = `${base}/proxy/${b.name}`;
-      newUrls.push(proxyUrl);
+      newUrls.add(proxyUrl);
       if (b.color) configColorsRef.current.set(proxyUrl, b.color);
     }
+
+    // Remove any proxy backends this primary previously reported but no longer does
+    const prevUrls = proxyBackendsByPrimaryRef.current.get(primaryUrl) ?? new Set();
+    const removed = [...prevUrls].filter((u) => !newUrls.has(u));
+    proxyBackendsByPrimaryRef.current.set(primaryUrl, newUrls);
+
     setProxyBackendUrls((prev) => {
       const next = new Set(prev);
       for (const u of newUrls) next.add(u);
+      for (const u of removed) next.delete(u);
       return next;
     });
     setBackendUrls((prev) => {
-      const next = [...prev];
+      let next = [...prev].filter((u) => !removed.includes(u));
       for (const u of newUrls) {
         if (!next.includes(u)) next.push(u);
       }
       return next;
     });
-  }, []);
-
-  const addBackend = useCallback((url: string) => {
-    setBackendUrls((prev) => prev.includes(url) ? prev : [...prev, url]);
-  }, []);
-
-  const removeBackend = useCallback((url: string) => {
-    setBackendUrls((prev) => prev.filter((u) => u !== url));
-    setBackendInfoMap((prev) => {
-      const next = new Map(prev);
-      next.delete(url);
-      return next;
-    });
+    if (removed.length > 0) {
+      setBackendInfoMap((prev) => {
+        const next = new Map(prev);
+        for (const u of removed) next.delete(u);
+        return next;
+      });
+    }
   }, []);
 
   const backendsForSidebar = backendUrls.map((url) => {
@@ -292,7 +295,6 @@ export default function App() {
       url,
       clusterName,
       status: info?.status ?? "connecting",
-      removable: !configBackends.has(url) && !proxyBackendUrls.has(url),
       enabled: !disabledBackends.has(url),
       color: clusterName ? clusterColorMap.get(clusterName) : undefined,
     };
@@ -345,17 +347,20 @@ export default function App() {
     return result;
   }, [disabledBackends, backendInfoMap]);
 
+  const [nameFilter, setNameFilter] = useState("");
+
   const filteredEvents = useMemo(() => {
     const now = Date.now();
+    const lc = nameFilter.toLowerCase();
     return events.filter((e) => {
       if (now >= e.expiresAt) return false;
       if (disabledClusters.has(e.cluster)) return false;
       if (!globalFilter.selectedNamespaces.has(e.namespace)) return false;
       if (!globalFilter.selectedResources.has(e.resourceType)) return false;
+      if (lc && !e.name.toLowerCase().includes(lc)) return false;
       return true;
     });
-  }, [events, disabledClusters, globalFilter.selectedNamespaces, globalFilter.selectedResources]);
-
+  }, [events, disabledClusters, globalFilter.selectedNamespaces, globalFilter.selectedResources, nameFilter]);
   const [configLoaded, setConfigLoaded] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -365,8 +370,6 @@ export default function App() {
         backends={backendsForSidebar}
         duration={duration}
         onDurationChange={setDuration}
-        onAddBackend={addBackend}
-        onRemoveBackend={removeBackend}
         onToggleBackend={handleToggleBackend}
         namespaces={allNamespaces}
         selectedNamespaces={globalFilter.selectedNamespaces}
@@ -376,6 +379,8 @@ export default function App() {
         selectedResources={globalFilter.selectedResources}
         onToggleResource={handleToggleResource}
         onToggleAllResources={handleToggleAllResources}
+        nameFilter={nameFilter}
+        onNameFilterChange={setNameFilter}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
       />

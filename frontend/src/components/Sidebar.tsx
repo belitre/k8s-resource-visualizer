@@ -5,7 +5,6 @@ interface BackendInfo {
   url: string;
   clusterName: string;
   status: string;
-  removable: boolean;
   enabled: boolean;
   color?: string;
 }
@@ -14,8 +13,6 @@ interface SidebarProps {
   backends: BackendInfo[];
   duration: number;
   onDurationChange: (d: number) => void;
-  onAddBackend: (url: string) => void;
-  onRemoveBackend: (url: string) => void;
   onToggleBackend: (url: string) => void;
   namespaces: string[];
   selectedNamespaces: Set<string>;
@@ -25,6 +22,8 @@ interface SidebarProps {
   selectedResources: Set<string>;
   onToggleResource: (rt: string) => void;
   onToggleAllResources: (resources: string[], selected: boolean) => void;
+  nameFilter: string;
+  onNameFilterChange: (value: string) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -119,9 +118,8 @@ function CheckboxFilter({
   );
 }
 
-function BackendItem({ backend, onRemove, onToggle }: {
+function BackendItem({ backend, onToggle }: {
   backend: BackendInfo;
-  onRemove: () => void;
   onToggle: () => void;
 }) {
   return (
@@ -139,15 +137,6 @@ function BackendItem({ backend, onRemove, onToggle }: {
       <span style={{ flex: 1, fontSize: "13px", color: "#c8cdd8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {backend.clusterName || backend.url}
       </span>
-      {backend.removable && (
-        <button
-          onClick={onRemove}
-          style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "18px", lineHeight: 1, flexShrink: 0 }}
-          title="Remove backend"
-        >
-          &times;
-        </button>
-      )}
     </div>
   );
 }
@@ -320,8 +309,6 @@ export function Sidebar({
   backends,
   duration,
   onDurationChange,
-  onAddBackend,
-  onRemoveBackend,
   onToggleBackend,
   namespaces,
   selectedNamespaces,
@@ -331,24 +318,17 @@ export function Sidebar({
   selectedResources,
   onToggleResource,
   onToggleAllResources,
+  nameFilter,
+  onNameFilterChange,
   collapsed,
   onToggleCollapse,
 }: SidebarProps) {
-  const [newUrl, setNewUrl] = useState("");
   const [backendsOpen, setBackendsOpen] = useState(true);
   const [namespacesOpen, setNamespacesOpen] = useState(true);
   const [resourcesOpen, setResourcesOpen] = useState(true);
   const [resourceFilter, setResourceFilter] = useState("");
 
   const nsLabel = (item: string) => item === "" ? "Non-namespaced" : item;
-
-  const handleAdd = () => {
-    const url = newUrl.trim();
-    if (url) {
-      onAddBackend(url);
-      setNewUrl("");
-    }
-  };
 
   if (collapsed) {
     return (
@@ -383,20 +363,14 @@ export function Sidebar({
       </div>
 
       <div style={{ padding: "16px", borderBottom: "1px solid #1e2030" }}>
-        <label style={{ fontWeight: 600, display: "block", marginBottom: "8px" }}>Add Backend</label>
-        <div style={{ display: "flex", gap: "6px" }}>
-          <input
-            type="text"
-            placeholder="http://backend-url:8080"
-            value={newUrl}
-            onChange={(e) => setNewUrl(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-            style={{ flex: 1, padding: "6px 10px", border: "1px solid #2a2d3d", borderRadius: "4px", fontSize: "13px", background: "#1a1c2a", color: "#c8cdd8" }}
-          />
-          <button onClick={handleAdd} style={{ padding: "6px 12px", background: "#3b82f6", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "13px" }}>
-            Add
-          </button>
-        </div>
+        <label style={{ fontWeight: 600, display: "block", marginBottom: "8px" }}>Filter by Name</label>
+        <input
+          type="text"
+          placeholder="e.g. my-deployment"
+          value={nameFilter}
+          onChange={(e) => onNameFilterChange(e.target.value)}
+          style={{ ...inputStyle, marginBottom: 0 }}
+        />
       </div>
 
       <div style={{ flex: 1, overflow: "auto" }}>
@@ -410,7 +384,6 @@ export function Sidebar({
             <BackendItem
               key={backend.url}
               backend={backend}
-              onRemove={() => onRemoveBackend(backend.url)}
               onToggle={() => onToggleBackend(backend.url)}
             />
           ))}
