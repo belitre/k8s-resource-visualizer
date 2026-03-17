@@ -1,4 +1,7 @@
-.PHONY: all build build-backend build-frontend test test-backend test-frontend lint lint-backend lint-frontend clean dev dev-backend dev-frontend
+.PHONY: all build build-backend build-frontend test test-backend test-frontend lint lint-backend lint-frontend clean dev dev-backend dev-frontend docker-build docker-push docker-build-push install-semantic-release release release-dry-run
+
+IMAGE ?= ghcr.io/belitre/k8s-resource-visualizer
+VERSION ?= latest
 
 # Default target
 all: build
@@ -49,7 +52,12 @@ dev:
 # ── Docker ───────────────────────────────────────────────────────────────────
 
 docker-build:
-	docker build -t k8s-resource-visualizer:latest .
+	docker build -t $(IMAGE):$(VERSION) .
+
+docker-push:
+	docker push $(IMAGE):$(VERSION)
+
+docker-build-push: docker-build docker-push
 
 # ── Clean ────────────────────────────────────────────────────────────────────
 
@@ -57,3 +65,24 @@ clean:
 	rm -rf bin/
 	rm -rf frontend/dist
 	rm -rf frontend/node_modules
+
+# ── Semantic release ──────────────────────────────────────────────────────────
+
+install-semantic-release: ## Install semantic-release dependencies
+	@echo "Installing semantic-release and plugins..."
+	npm install -g \
+		semantic-release@latest \
+		@semantic-release/git@latest \
+		@semantic-release/changelog@latest \
+		@semantic-release/exec@latest \
+		conventional-changelog-conventionalcommits@latest
+	@echo "Semantic-release installed successfully!"
+
+
+release: ## Run semantic-release to create a new release
+	@echo "Running semantic-release..."
+	npx semantic-release
+
+release-dry-run: ## Run semantic-release in dry-run mode (no actual release)
+	@echo "Running semantic-release in dry-run mode..."
+	npx semantic-release --dry-run
