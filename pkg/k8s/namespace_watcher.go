@@ -59,32 +59,15 @@ func (m *Manager) watchNamespacesOnce(ctx context.Context, trigger chan<- struct
 }
 
 func (m *Manager) nsChangedDebounce(ctx context.Context, trigger <-chan struct{}) {
-	for {
-		select {
-		case <-ctx.Done():
+	debounce(ctx, trigger, 1*time.Second, func() {
+		namespaces, err := m.ListNamespaces(ctx)
+		if err != nil {
+			log.Printf("namespace change: failed to list namespaces: %v", err)
 			return
-		case <-trigger:
-			timer := time.NewTimer(1 * time.Second)
-		drain:
-			for {
-				select {
-				case <-trigger:
-				case <-timer.C:
-					break drain
-				case <-ctx.Done():
-					timer.Stop()
-					return
-				}
-			}
-			namespaces, err := m.ListNamespaces(ctx)
-			if err != nil {
-				log.Printf("namespace change: failed to list namespaces: %v", err)
-				continue
-			}
-			log.Printf("namespace change detected: %d namespaces", len(namespaces))
-			if m.onNamespacesChanged != nil {
-				m.onNamespacesChanged(namespaces)
-			}
 		}
-	}
+		log.Printf("namespace change detected: %d namespaces", len(namespaces))
+		if m.onNamespacesChanged != nil {
+			m.onNamespacesChanged(namespaces)
+		}
+	})
 }

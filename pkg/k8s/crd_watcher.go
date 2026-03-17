@@ -83,12 +83,22 @@ func (m *Manager) watchCRDsOnce(ctx context.Context, crdGenerations map[string]i
 
 // crdRediscoverDebounce waits for triggers and calls Rediscover after a 2s quiet window.
 func (m *Manager) crdRediscoverDebounce(ctx context.Context, trigger <-chan struct{}) {
+	debounce(ctx, trigger, 2*time.Second, func() {
+		log.Printf("CRD change detected, rediscovering resources")
+		if err := m.Rediscover(); err != nil {
+			log.Printf("rediscover after CRD change failed: %v", err)
+		}
+	})
+}
+
+// debounce calls fn after a quiet window of d following the last trigger signal.
+func debounce(ctx context.Context, trigger <-chan struct{}, d time.Duration, fn func()) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-trigger:
-			timer := time.NewTimer(2 * time.Second)
+			timer := time.NewTimer(d)
 		drain:
 			for {
 				select {
@@ -100,10 +110,7 @@ func (m *Manager) crdRediscoverDebounce(ctx context.Context, trigger <-chan stru
 					return
 				}
 			}
-			log.Printf("CRD change detected, rediscovering resources")
-			if err := m.Rediscover(); err != nil {
-				log.Printf("rediscover after CRD change failed: %v", err)
-			}
+			fn()
 		}
 	}
 }

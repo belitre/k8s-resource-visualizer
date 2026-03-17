@@ -42,63 +42,24 @@ func (h *Hub) Unregister(c *Client) {
 
 // BroadcastEvent sends a resource event to all connected clients.
 func (h *Hub) BroadcastEvent(ev k8s.VisualEvent) {
-	msg := ServerMessage{
-		Type: "event",
-		Data: ev,
-	}
-
-	data, err := json.Marshal(msg)
-	if err != nil {
-		log.Printf("error marshaling event: %v", err)
-		return
-	}
-
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	for c := range h.clients {
-		select {
-		case c.send <- data:
-		default:
-			// client buffer full, skip
-		}
-	}
+	h.broadcast("event", ev)
 }
 
 // BroadcastResourcesUpdated sends an updated resource list to all connected clients.
 func (h *Hub) BroadcastResourcesUpdated(resources []k8s.ResourceInfo) {
-	msg := ServerMessage{
-		Type: "resources_updated",
-		Data: resources,
-	}
-
-	data, err := json.Marshal(msg)
-	if err != nil {
-		log.Printf("error marshaling resources_updated: %v", err)
-		return
-	}
-
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	for c := range h.clients {
-		select {
-		case c.send <- data:
-		default:
-		}
-	}
+	h.broadcast("resources_updated", resources)
 }
 
 // BroadcastNamespacesUpdated sends an updated namespace list to all connected clients.
 func (h *Hub) BroadcastNamespacesUpdated(namespaces []string) {
-	msg := ServerMessage{
-		Type: "namespaces_updated",
-		Data: namespaces,
-	}
+	h.broadcast("namespaces_updated", namespaces)
+}
 
-	data, err := json.Marshal(msg)
+func (h *Hub) broadcast(msgType string, data any) {
+	msg := ServerMessage{Type: msgType, Data: data}
+	bytes, err := json.Marshal(msg)
 	if err != nil {
-		log.Printf("error marshaling namespaces_updated: %v", err)
+		log.Printf("error marshaling %s: %v", msgType, err)
 		return
 	}
 
@@ -107,8 +68,9 @@ func (h *Hub) BroadcastNamespacesUpdated(namespaces []string) {
 
 	for c := range h.clients {
 		select {
-		case c.send <- data:
+		case c.send <- bytes:
 		default:
+			// client buffer full, skip
 		}
 	}
 }
@@ -116,5 +78,5 @@ func (h *Hub) BroadcastNamespacesUpdated(namespaces []string) {
 // ServerMessage is sent from server to client.
 type ServerMessage struct {
 	Type string      `json:"type"`
-	Data interface{} `json:"data"`
+	Data any `json:"data"`
 }
