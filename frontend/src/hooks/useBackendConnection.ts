@@ -79,6 +79,8 @@ export function useBackendConnection(
           onEventRef.current(event);
         } else if (msg.type === "resources_updated") {
           setState((prev) => ({ ...prev, resources: msg.data }));
+        } else if (msg.type === "namespaces_updated") {
+          setState((prev) => ({ ...prev, namespaces: msg.data }));
         }
       };
 

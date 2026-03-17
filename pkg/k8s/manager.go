@@ -27,8 +27,9 @@ type Manager struct {
 	cfg                *config.Config
 	mu                 sync.Mutex
 	watchersByGVR      map[string]*Watcher
-	callback           EventCallback
-	onResourcesChanged func([]string)
+	callback             EventCallback
+	onResourcesChanged   func([]string)
+	onNamespacesChanged  func([]string)
 }
 
 // NewManager creates a Manager. Tries in-cluster config, falls back to kubeconfig.

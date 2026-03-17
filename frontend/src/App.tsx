@@ -72,7 +72,7 @@ export default function App() {
   // Maps backend URL → configured color from config.json
   const configColorsRef = useRef<Map<string, string>>(new Map());
   // Per-cluster filter state keyed by clusterName
-  const [clusterFilterMap, setClusterFilterMap] = useState<Map<string, { selectedNamespaces: Set<string>; selectedResources: Set<string>; knownResources: Set<string> }>>(new Map());
+  const [clusterFilterMap, setClusterFilterMap] = useState<Map<string, { selectedNamespaces: Set<string>; selectedResources: Set<string>; knownResources: Set<string>; knownNamespaces: Set<string> }>>(new Map());
 
   useEffect(() => {
     fetch("/config.json")
@@ -126,29 +126,39 @@ export default function App() {
     if (!clusterName) return;
     setClusterFilterMap((prev) => {
       const isNew = !prev.has(clusterName);
-      const existing = prev.get(clusterName) ?? { selectedNamespaces: new Set<string>(), selectedResources: new Set<string>(), knownResources: new Set<string>() };
+      const existing = prev.get(clusterName) ?? { selectedNamespaces: new Set<string>(), selectedResources: new Set<string>(), knownResources: new Set<string>(), knownNamespaces: new Set<string>() };
       const newNs = new Set(existing.selectedNamespaces);
       const newRes = new Set(existing.selectedResources);
-      const newKnown = new Set(existing.knownResources);
+      const newKnownRes = new Set(existing.knownResources);
+      const newKnownNs = new Set(existing.knownNamespaces);
       let changed = isNew;
-      // Always select "" so non-namespaced resources are visible by default
+      // "" sentinel always selected so non-namespaced resources are visible by default
       if (!newNs.has("")) { newNs.add(""); changed = true; }
       for (const ns of namespaces) {
-        if (!newNs.has(ns)) { newNs.add(ns); changed = true; }
+        const isActuallyNew = !newKnownNs.has(ns);
+        if (isActuallyNew) {
+          newKnownNs.add(ns);
+          changed = true;
+          // Auto-select new namespace only if first connection OR user has at least one real namespace selected
+          const hasRealNsSelected = [...newNs].some((n) => n !== "");
+          if (isNew || hasRealNsSelected) {
+            newNs.add(ns);
+          }
+        }
       }
       for (const rt of resources) {
-        const isActuallyNew = !newKnown.has(rt);
+        const isActuallyNew = !newKnownRes.has(rt);
         if (isActuallyNew) {
-          newKnown.add(rt);
+          newKnownRes.add(rt);
           changed = true;
-          // Auto-select only if first connection OR user has some resources selected
+          // Auto-select new resource only if first connection OR user has some resources selected
           if (isNew || newRes.size > 0) {
             newRes.add(rt);
           }
         }
       }
       if (!changed) return prev;
-      return new Map(prev).set(clusterName, { selectedNamespaces: newNs, selectedResources: newRes, knownResources: newKnown });
+      return new Map(prev).set(clusterName, { selectedNamespaces: newNs, selectedResources: newRes, knownResources: newKnownRes, knownNamespaces: newKnownNs });
     });
   }, []);
 

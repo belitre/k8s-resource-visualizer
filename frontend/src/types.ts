@@ -17,4 +17,5 @@ export interface VisualEvent {
 
 export type ServerMessage =
   | { type: "event"; data: Omit<VisualEvent, "x" | "y"> }
-  | { type: "resources_updated"; data: string[] };
+  | { type: "resources_updated"; data: string[] }
+  | { type: "namespaces_updated"; data: string[] };

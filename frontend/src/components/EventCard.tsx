@@ -97,9 +97,23 @@ export function EventCard({ event, clusterColor, onPositionChange, onTimerRestar
               </span>
             )}
           </div>
-          <div style={{ fontWeight: 600, marginBottom: "4px", color: "#e2e8f0" }}>{event.name}</div>
-          <div style={{ color: "#7c8497", marginBottom: "4px" }}>
-            {event.resourceType}{event.namespace && ` · ${event.namespace}`}
+          <div style={{ fontWeight: 600, marginBottom: "6px", color: "#e2e8f0" }}>{event.name}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px", flexWrap: "wrap" }}>
+            <span style={{ color: "#7c8497", fontSize: "12px" }}>{event.resourceType}</span>
+            {event.namespace && (
+              <span style={{
+                background: "#2a2d3e",
+                border: "1px solid #3d4263",
+                borderRadius: "4px",
+                padding: "1px 7px",
+                fontSize: "11px",
+                color: "#a5b4fc",
+                fontWeight: 600,
+                letterSpacing: "0.2px",
+              }}>
+                {event.namespace}
+              </span>
+            )}
           </div>
           <div style={{ color: "#4a5068", fontSize: "11px", lineHeight: "1.6" }}>
             <div>created: {formatTime(event.createdAt)}</div>

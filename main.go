@@ -60,7 +60,11 @@ func main() {
 	manager.SetOnResourcesChanged(func(resources []string) {
 		hub.BroadcastResourcesUpdated(resources)
 	})
+	manager.SetOnNamespacesChanged(func(namespaces []string) {
+		hub.BroadcastNamespacesUpdated(namespaces)
+	})
 	go manager.WatchCRDs(ctx)
+	go manager.WatchNamespaces(ctx)
 
 	var frontendFS fs.FS
 	if os.Getenv("SERVE_FRONTEND") != "false" {
