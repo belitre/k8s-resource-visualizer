@@ -28,7 +28,7 @@ function makeBackend(overrides = {}) {
     resources: ["deployments.apps", "pods"],
     status: "connected",
     removable: true,
-    selectedNamespaces: new Set(["default", "kube-system"]),
+    selectedNamespaces: new Set(["", "default", "kube-system"]),
     selectedResources: new Set(["deployments.apps", "pods"]),
     ...overrides,
   };
@@ -88,6 +88,7 @@ describe("Sidebar", () => {
     fireEvent.click(screen.getByText("prod"));
 
     expect(screen.getByText("Namespaces")).toBeInTheDocument();
+    expect(screen.getByText("Non-namespaced")).toBeInTheDocument();
     expect(screen.getByText("default")).toBeInTheDocument();
     expect(screen.getByText("kube-system")).toBeInTheDocument();
   });
@@ -172,9 +173,24 @@ describe("Sidebar", () => {
 
     expect(props.onToggleAllClusterNamespaces).toHaveBeenCalledWith(
       "prod",
-      ["default", "kube-system"],
+      ["", "default", "kube-system"],
       true
     );
+  });
+
+  it("calls onToggleClusterNamespace for non-namespaced checkbox", () => {
+    const backend = makeBackend({ selectedNamespaces: new Set(["", "default", "kube-system"]) });
+    const { props } = renderSidebar({ backends: [backend] });
+
+    fireEvent.click(screen.getByText("prod"));
+
+    const nonNsCheckbox = screen.getAllByRole("checkbox").find((cb) => {
+      const label = cb.closest("label");
+      return label?.textContent?.includes("Non-namespaced");
+    })!;
+    fireEvent.click(nonNsCheckbox);
+
+    expect(props.onToggleClusterNamespace).toHaveBeenCalledWith("prod", "");
   });
 
   it("calls onToggleAllClusterResources for select all", () => {

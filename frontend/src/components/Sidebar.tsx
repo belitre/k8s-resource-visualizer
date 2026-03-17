@@ -78,6 +78,7 @@ function CheckboxFilter({
   onToggleAll,
   filterPlaceholder,
   fontSize = "13px",
+  getLabel = (item: string) => item,
 }: {
   items: string[];
   selected: Set<string>;
@@ -85,9 +86,10 @@ function CheckboxFilter({
   onToggleAll: (items: string[], selected: boolean) => void;
   filterPlaceholder: string;
   fontSize?: string;
+  getLabel?: (item: string) => string;
 }) {
   const [filter, setFilter] = useState("");
-  const filtered = filter ? items.filter((i) => i.toLowerCase().includes(filter.toLowerCase())) : items;
+  const filtered = filter ? items.filter((i) => getLabel(i).toLowerCase().includes(filter.toLowerCase())) : items;
   const allSelected = filtered.length > 0 && filtered.every((i) => selected.has(i));
 
   return (
@@ -106,7 +108,7 @@ function CheckboxFilter({
       {filtered.map((item) => (
         <label key={item} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "3px 0", cursor: "pointer", fontSize }}>
           <input type="checkbox" checked={selected.has(item)} onChange={() => onToggle(item)} />
-          {item}
+          {getLabel(item)}
         </label>
       ))}
     </div>
@@ -132,8 +134,9 @@ function BackendItem({
   onToggleResource: (rt: string) => void;
   onToggleAllResources: (rt: string[], selected: boolean) => void;
 }) {
-  const ns = backend.namespaces.slice().sort();
+  const ns = ["", ...backend.namespaces.slice().sort()];
   const res = backend.resources.slice().sort();
+  const nsLabel = (item: string) => item === "" ? "Non-namespaced" : item;
 
   return (
     <div style={{ borderTop: "1px solid #1e2030" }}>
@@ -158,12 +161,10 @@ function BackendItem({
       </div>
       {expanded && (
         <div style={{ padding: "0 16px 12px", borderTop: "1px solid #1a1c2a" }}>
-          {ns.length > 0 && (
-            <div style={{ marginTop: "10px" }}>
-              <div style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: "6px" }}>Namespaces</div>
-              <CheckboxFilter items={ns} selected={backend.selectedNamespaces} onToggle={onToggleNamespace} onToggleAll={onToggleAllNamespaces} filterPlaceholder="Filter…" fontSize="12px" />
-            </div>
-          )}
+          <div style={{ marginTop: "10px" }}>
+            <div style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: "6px" }}>Namespaces</div>
+            <CheckboxFilter items={ns} selected={backend.selectedNamespaces} onToggle={onToggleNamespace} onToggleAll={onToggleAllNamespaces} filterPlaceholder="Filter…" fontSize="12px" getLabel={nsLabel} />
+          </div>
           {res.length > 0 && (
             <div style={{ marginTop: "10px" }}>
               <div style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: "6px" }}>Resource Types</div>

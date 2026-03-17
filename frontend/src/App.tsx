@@ -129,6 +129,8 @@ export default function App() {
       const newNs = new Set(existing.selectedNamespaces);
       const newRes = new Set(existing.selectedResources);
       let changed = !prev.has(clusterName);
+      // Always select "" so non-namespaced resources are visible by default
+      if (!newNs.has("")) { newNs.add(""); changed = true; }
       for (const ns of namespaces) {
         if (!newNs.has(ns)) { newNs.add(ns); changed = true; }
       }
@@ -252,7 +254,7 @@ export default function App() {
       if (now >= e.expiresAt) return false;
       const clusterFilter = clusterFilterMap.get(e.cluster);
       if (clusterFilter) {
-        if (e.namespace !== "" && !clusterFilter.selectedNamespaces.has(e.namespace)) return false;
+        if (!clusterFilter.selectedNamespaces.has(e.namespace)) return false;
         if (!clusterFilter.selectedResources.has(e.resourceType)) return false;
       }
       return true;
