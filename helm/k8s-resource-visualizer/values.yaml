@@ -15,8 +15,6 @@ serveFrontend: true
 # Frontend config — only used when serveFrontend=true.
 # The local backend (this instance) is always included automatically.
 frontend:
-  # URL of this instance as seen from the user's browser.
-  selfUrl: "http://localhost:8080"
   # Optional hex color for this cluster in the UI.
   selfColor: ""
   # Additional backend clusters to pre-configure.

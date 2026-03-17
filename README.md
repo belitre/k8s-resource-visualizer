@@ -257,7 +257,9 @@ remoteBackends:      # Other backends this instance can proxy to
 
 ### Frontend Config
 
-The frontend loads `/config.json` at startup to pre-configure backend connections.
+The frontend automatically connects to the backend that served it (`window.location.origin`) — no URL configuration needed. It works correctly whether accessed via localhost, an Ingress, a LoadBalancer, or any other hostname.
+
+`/config.json` is loaded at startup for optional extras: a color for the self backend and pre-configured additional backends.
 
 In production (Helm), this file is generated from `values.yaml` and mounted into the container — see [Helm deployment](#helm-deployment).
 
@@ -265,14 +267,14 @@ For local development, edit `frontend/public/config.json`:
 
 ```json
 {
+  "selfColor": "#3b82f6",
   "backends": [
-    "http://localhost:8080",
-    { "url": "http://cluster-b:8080", "color": "#3b82f6" }
+    { "url": "http://cluster-b:8080", "color": "#f59e0b" }
   ]
 }
 ```
 
-Each entry can be a plain URL string or an object with an optional `color` (hex). If the file is missing or has an empty array, the frontend starts with no backends and you add them manually via the sidebar.
+`selfColor` is optional — sets the color for the self cluster in the UI. `backends` lists additional clusters to connect to; each entry can be a plain URL string or an object with an optional `color`. If the file is missing or empty, the frontend connects only to itself and you can add more backends via the sidebar.
 
 ## API Endpoints
 
@@ -379,16 +381,14 @@ From the OCI registry (released versions):
 helm upgrade --install k8s-resource-visualizer \
   oci://ghcr.io/belitre/charts/k8s-resource-visualizer \
   --version 1.2.3 \
-  --set clusterName=prod-eu \
-  --set frontend.selfUrl=https://prod-eu.example.com
+  --set clusterName=prod-eu
 ```
 
 From the local chart (development):
 
 ```bash
 helm upgrade --install k8s-resource-visualizer helm/k8s-resource-visualizer \
-  --set clusterName=prod-eu \
-  --set frontend.selfUrl=https://prod-eu.example.com
+  --set clusterName=prod-eu
 ```
 
 ### Key values
@@ -397,7 +397,6 @@ helm upgrade --install k8s-resource-visualizer helm/k8s-resource-visualizer \
 |-------|---------|-------------|
 | `clusterName` | `unknown` | Cluster name shown in the UI |
 | `serveFrontend` | `true` | Set to `false` for backend-only deployments |
-| `frontend.selfUrl` | `http://localhost:8080` | URL of this instance as seen from the browser |
 | `frontend.selfColor` | | Optional hex color for this cluster in the UI |
 | `frontend.backends` | `[]` | Additional backend clusters to pre-configure |
 | `backendConfig` | `{}` | Resource/namespace filter + remote backends (see below) |
@@ -409,7 +408,6 @@ helm upgrade --install k8s-resource-visualizer helm/k8s-resource-visualizer \
 ```yaml
 clusterName: prod-eu
 frontend:
-  selfUrl: "https://prod-eu.example.com"
   selfColor: "#3b82f6"
   backends:
     - url: "https://prod-us.example.com"
@@ -449,7 +447,6 @@ Deploy one backend per cluster. The cluster that serves the frontend configures 
 # Cluster A — serves the frontend, proxies to Cluster B
 clusterName: prod-eu
 frontend:
-  selfUrl: "https://prod-eu.example.com"
   selfColor: "#3b82f6"
 backendConfig:
   remoteBackends:
@@ -472,7 +469,6 @@ If all backends are reachable from the browser (e.g., each exposed via an Ingres
 # Cluster A
 helm upgrade --install k8s-resource-visualizer helm/k8s-resource-visualizer \
   --set clusterName=prod-eu \
-  --set frontend.selfUrl=https://prod-eu.example.com \
   --set frontend.selfColor="#3b82f6" \
   --set frontend.backends[0].url=https://prod-us.example.com \
   --set frontend.backends[0].color="#f59e0b"

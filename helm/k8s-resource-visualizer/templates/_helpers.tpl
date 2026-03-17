@@ -64,12 +64,11 @@ Namespace filtering is enforced by the application, not RBAC.
 {{- end }}
 
 {{- define "k8s-resource-visualizer.frontendConfig" -}}
-{{- $backends := list -}}
-{{- $self := dict "url" .Values.frontend.selfUrl -}}
+{{- $cfg := dict -}}
 {{- if .Values.frontend.selfColor -}}
-{{- $_ := set $self "color" .Values.frontend.selfColor -}}
+{{- $_ := set $cfg "selfColor" .Values.frontend.selfColor -}}
 {{- end -}}
-{{- $backends = append $backends $self -}}
+{{- $backends := list -}}
 {{- range .Values.frontend.backends -}}
 {{- $b := dict "url" .url -}}
 {{- if .color -}}
@@ -77,5 +76,8 @@ Namespace filtering is enforced by the application, not RBAC.
 {{- end -}}
 {{- $backends = append $backends $b -}}
 {{- end -}}
-{{- dict "backends" $backends | toJson -}}
+{{- if $backends -}}
+{{- $_ := set $cfg "backends" $backends -}}
+{{- end -}}
+{{- $cfg | toJson -}}
 {{- end }}

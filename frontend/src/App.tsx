@@ -61,9 +61,10 @@ function BackendBridge({
 }
 
 export default function App() {
-  const [backendUrls, setBackendUrls] = useState<string[]>([]);
+  const selfUrl = window.location.origin;
+  const [backendUrls, setBackendUrls] = useState<string[]>([selfUrl]);
   const [backendInfoMap, setBackendInfoMap] = useState<Map<string, BackendInfo>>(new Map());
-  const [configBackends, setConfigBackends] = useState<Set<string>>(new Set());
+  const [configBackends, setConfigBackends] = useState<Set<string>>(new Set([selfUrl]));
   // URLs auto-discovered via /api/proxy-backends — not removable, not recursed into
   const [proxyBackendUrls, setProxyBackendUrls] = useState<Set<string>>(new Set());
   const [events, setEvents] = useState<VisualEvent[]>([]);
@@ -77,28 +78,29 @@ export default function App() {
   useEffect(() => {
     fetch("/config.json")
       .then((r) => r.json())
-      .then((config: { backends?: BackendEntry[] }) => {
-        if (!config.backends) return;
-        const urls: string[] = [];
+      .then((config: { selfColor?: string; backends?: BackendEntry[] }) => {
         const colorMap = new Map<string, string>();
-        for (const entry of config.backends) {
+        if (config.selfColor) colorMap.set(selfUrl, config.selfColor);
+        const extraUrls: string[] = [];
+        for (const entry of config.backends ?? []) {
           const url = typeof entry === "string" ? entry : entry.url;
           const color = typeof entry === "string" ? undefined : entry.color;
-          urls.push(url);
+          extraUrls.push(url);
           if (color) colorMap.set(url, color);
         }
         configColorsRef.current = colorMap;
-        setConfigBackends(new Set(urls));
+        if (extraUrls.length === 0) return;
+        setConfigBackends((prev) => new Set([...prev, ...extraUrls]));
         setBackendUrls((prev) => {
           const next = [...prev];
-          for (const url of urls) {
+          for (const url of extraUrls) {
             if (!next.includes(url)) next.push(url);
           }
           return next;
         });
       })
       .catch(() => {});
-  }, []);
+  }, [selfUrl]);
 
   // Remove expired events on a 500ms tick, regardless of filter visibility
   useEffect(() => {
