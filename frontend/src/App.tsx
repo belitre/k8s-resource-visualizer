@@ -72,7 +72,7 @@ export default function App() {
   // Maps backend URL → configured color from config.json
   const configColorsRef = useRef<Map<string, string>>(new Map());
   // Per-cluster filter state keyed by clusterName
-  const [clusterFilterMap, setClusterFilterMap] = useState<Map<string, { selectedNamespaces: Set<string>; selectedResources: Set<string> }>>(new Map());
+  const [clusterFilterMap, setClusterFilterMap] = useState<Map<string, { selectedNamespaces: Set<string>; selectedResources: Set<string>; knownResources: Set<string> }>>(new Map());
 
   useEffect(() => {
     fetch("/config.json")
@@ -125,20 +125,30 @@ export default function App() {
   const autoSelectForCluster = useCallback((clusterName: string, namespaces: string[], resources: string[]) => {
     if (!clusterName) return;
     setClusterFilterMap((prev) => {
-      const existing = prev.get(clusterName) ?? { selectedNamespaces: new Set<string>(), selectedResources: new Set<string>() };
+      const isNew = !prev.has(clusterName);
+      const existing = prev.get(clusterName) ?? { selectedNamespaces: new Set<string>(), selectedResources: new Set<string>(), knownResources: new Set<string>() };
       const newNs = new Set(existing.selectedNamespaces);
       const newRes = new Set(existing.selectedResources);
-      let changed = !prev.has(clusterName);
+      const newKnown = new Set(existing.knownResources);
+      let changed = isNew;
       // Always select "" so non-namespaced resources are visible by default
       if (!newNs.has("")) { newNs.add(""); changed = true; }
       for (const ns of namespaces) {
         if (!newNs.has(ns)) { newNs.add(ns); changed = true; }
       }
       for (const rt of resources) {
-        if (!newRes.has(rt)) { newRes.add(rt); changed = true; }
+        const isActuallyNew = !newKnown.has(rt);
+        if (isActuallyNew) {
+          newKnown.add(rt);
+          changed = true;
+          // Auto-select only if first connection OR user has some resources selected
+          if (isNew || newRes.size > 0) {
+            newRes.add(rt);
+          }
+        }
       }
       if (!changed) return prev;
-      return new Map(prev).set(clusterName, { selectedNamespaces: newNs, selectedResources: newRes });
+      return new Map(prev).set(clusterName, { selectedNamespaces: newNs, selectedResources: newRes, knownResources: newKnown });
     });
   }, []);
 

@@ -15,7 +15,6 @@ export interface VisualEvent {
   refreshedAt: number; // ms timestamp — when the card was last refreshed (same as createdAt if never refreshed)
 }
 
-export interface ServerMessage {
-  type: "event";
-  data: Omit<VisualEvent, "x" | "y">;
-}
+export type ServerMessage =
+  | { type: "event"; data: Omit<VisualEvent, "x" | "y"> }
+  | { type: "resources_updated"; data: string[] };

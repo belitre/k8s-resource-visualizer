@@ -123,7 +123,24 @@ func TestManagerStop(t *testing.T) {
 	// Stop on empty manager should not panic
 	m.Stop()
 
-	if m.watchers != nil {
-		t.Error("expected nil watchers after Stop()")
+	if m.watchersByGVR != nil {
+		t.Error("expected nil watchersByGVR after Stop()")
+	}
+}
+
+func TestManagerSetOnResourcesChanged(t *testing.T) {
+	m := newTestManager(nil, nil)
+
+	var got []string
+	m.SetOnResourcesChanged(func(resources []string) {
+		got = resources
+	})
+
+	if m.onResourcesChanged == nil {
+		t.Fatal("expected onResourcesChanged to be set")
+	}
+	m.onResourcesChanged([]string{"pods", "deployments.apps"})
+	if len(got) != 2 || got[0] != "pods" {
+		t.Errorf("callback received unexpected resources: %v", got)
 	}
 }

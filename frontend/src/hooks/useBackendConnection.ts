@@ -77,6 +77,8 @@ export function useBackendConnection(
             refreshedAt: 0, // set by App.tsx handleEvent
           };
           onEventRef.current(event);
+        } else if (msg.type === "resources_updated") {
+          setState((prev) => ({ ...prev, resources: msg.data }));
         }
       };
 
