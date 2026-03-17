@@ -3,12 +3,9 @@ import { useState } from "react";
 interface BackendInfo {
   url: string;
   clusterName: string;
-  namespaces: string[];
-  resources: string[];
   status: string;
   removable: boolean;
-  selectedNamespaces: Set<string>;
-  selectedResources: Set<string>;
+  enabled: boolean;
 }
 
 interface SidebarProps {
@@ -17,10 +14,15 @@ interface SidebarProps {
   onDurationChange: (d: number) => void;
   onAddBackend: (url: string) => void;
   onRemoveBackend: (url: string) => void;
-  onToggleClusterNamespace: (clusterName: string, ns: string) => void;
-  onToggleAllClusterNamespaces: (clusterName: string, namespaces: string[], selected: boolean) => void;
-  onToggleClusterResource: (clusterName: string, rt: string) => void;
-  onToggleAllClusterResources: (clusterName: string, resources: string[], selected: boolean) => void;
+  onToggleBackend: (url: string) => void;
+  namespaces: string[];
+  selectedNamespaces: Set<string>;
+  onToggleNamespace: (ns: string) => void;
+  onToggleAllNamespaces: (namespaces: string[], selected: boolean) => void;
+  resources: string[];
+  selectedResources: Set<string>;
+  onToggleResource: (rt: string) => void;
+  onToggleAllResources: (resources: string[], selected: boolean) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -115,63 +117,31 @@ function CheckboxFilter({
   );
 }
 
-function BackendItem({
-  backend,
-  expanded,
-  onToggleExpand,
-  onRemove,
-  onToggleNamespace,
-  onToggleAllNamespaces,
-  onToggleResource,
-  onToggleAllResources,
-}: {
+function BackendItem({ backend, onRemove, onToggle }: {
   backend: BackendInfo;
-  expanded: boolean;
-  onToggleExpand: () => void;
   onRemove: () => void;
-  onToggleNamespace: (ns: string) => void;
-  onToggleAllNamespaces: (ns: string[], selected: boolean) => void;
-  onToggleResource: (rt: string) => void;
-  onToggleAllResources: (rt: string[], selected: boolean) => void;
+  onToggle: () => void;
 }) {
-  const ns = ["", ...backend.namespaces.slice().sort()];
-  const res = backend.resources.slice().sort();
-  const nsLabel = (item: string) => item === "" ? "Non-namespaced" : item;
-
   return (
-    <div style={{ borderTop: "1px solid #1e2030" }}>
-      <div style={{ padding: "8px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div style={{ borderTop: "1px solid #1e2030", padding: "8px 16px", display: "flex", alignItems: "center", gap: "8px" }}>
+      <input
+        type="checkbox"
+        checked={backend.enabled}
+        onChange={onToggle}
+        title={backend.enabled ? "Disable events from this backend" : "Enable events from this backend"}
+      />
+      <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusColors[backend.status] ?? "#94a3b8", display: "inline-block", flexShrink: 0 }} />
+      <span style={{ flex: 1, fontSize: "13px", color: "#c8cdd8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {backend.clusterName || backend.url}
+      </span>
+      {backend.removable && (
         <button
-          onClick={onToggleExpand}
-          style={{ flex: 1, display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", background: "none", border: "none", cursor: "pointer", color: "#c8cdd8", fontFamily: "system-ui, sans-serif", textAlign: "left", padding: 0 }}
+          onClick={onRemove}
+          style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "18px", lineHeight: 1, flexShrink: 0 }}
+          title="Remove backend"
         >
-          <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusColors[backend.status] ?? "#94a3b8", display: "inline-block", flexShrink: 0 }} />
-          <span style={{ flex: 1 }}>{backend.clusterName || backend.url}</span>
-          <span style={{ fontSize: "10px", color: "#64748b" }}>{expanded ? "▲" : "▼"}</span>
+          &times;
         </button>
-        {backend.removable && (
-          <button
-            onClick={onRemove}
-            style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "18px", lineHeight: 1, marginLeft: "8px" }}
-            title="Remove backend"
-          >
-            &times;
-          </button>
-        )}
-      </div>
-      {expanded && (
-        <div style={{ padding: "0 16px 12px", borderTop: "1px solid #1a1c2a" }}>
-          <div style={{ marginTop: "10px" }}>
-            <div style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: "6px" }}>Namespaces</div>
-            <CheckboxFilter items={ns} selected={backend.selectedNamespaces} onToggle={onToggleNamespace} onToggleAll={onToggleAllNamespaces} filterPlaceholder="Filter…" fontSize="12px" getLabel={nsLabel} />
-          </div>
-          {res.length > 0 && (
-            <div style={{ marginTop: "10px" }}>
-              <div style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: "6px" }}>Resource Types</div>
-              <CheckboxFilter items={res} selected={backend.selectedResources} onToggle={onToggleResource} onToggleAll={onToggleAllResources} filterPlaceholder="Filter…" fontSize="12px" />
-            </div>
-          )}
-        </div>
       )}
     </div>
   );
@@ -183,16 +153,24 @@ export function Sidebar({
   onDurationChange,
   onAddBackend,
   onRemoveBackend,
-  onToggleClusterNamespace,
-  onToggleAllClusterNamespaces,
-  onToggleClusterResource,
-  onToggleAllClusterResources,
+  onToggleBackend,
+  namespaces,
+  selectedNamespaces,
+  onToggleNamespace,
+  onToggleAllNamespaces,
+  resources,
+  selectedResources,
+  onToggleResource,
+  onToggleAllResources,
   collapsed,
   onToggleCollapse,
 }: SidebarProps) {
   const [newUrl, setNewUrl] = useState("");
   const [backendsOpen, setBackendsOpen] = useState(true);
-  const [expandedBackends, setExpandedBackends] = useState<Set<string>>(new Set());
+  const [namespacesOpen, setNamespacesOpen] = useState(true);
+  const [resourcesOpen, setResourcesOpen] = useState(true);
+
+  const nsLabel = (item: string) => item === "" ? "Non-namespaced" : item;
 
   const handleAdd = () => {
     const url = newUrl.trim();
@@ -200,15 +178,6 @@ export function Sidebar({
       onAddBackend(url);
       setNewUrl("");
     }
-  };
-
-  const toggleBackendExpanded = (url: string) => {
-    setExpandedBackends((prev) => {
-      const next = new Set(prev);
-      if (next.has(url)) next.delete(url);
-      else next.add(url);
-      return next;
-    });
   };
 
   if (collapsed) {
@@ -261,6 +230,7 @@ export function Sidebar({
       </div>
 
       <div style={{ flex: 1, overflow: "auto" }}>
+        {/* Backends */}
         <div style={{ borderBottom: "1px solid #1e2030" }}>
           <SectionHeader label={`Backends${backends.length > 0 ? ` (${backends.length})` : ""}`} open={backendsOpen} onToggle={() => setBackendsOpen((o) => !o)} />
           {backendsOpen && backends.length === 0 && (
@@ -270,17 +240,42 @@ export function Sidebar({
             <BackendItem
               key={backend.url}
               backend={backend}
-              expanded={expandedBackends.has(backend.url)}
-              onToggleExpand={() => toggleBackendExpanded(backend.url)}
               onRemove={() => onRemoveBackend(backend.url)}
-              onToggleNamespace={(ns) => onToggleClusterNamespace(backend.clusterName, ns)}
-              onToggleAllNamespaces={(ns, sel) => onToggleAllClusterNamespaces(backend.clusterName, ns, sel)}
-              onToggleResource={(rt) => onToggleClusterResource(backend.clusterName, rt)}
-              onToggleAllResources={(rt, sel) => onToggleAllClusterResources(backend.clusterName, rt, sel)}
+              onToggle={() => onToggleBackend(backend.url)}
             />
           ))}
         </div>
 
+        {/* Namespaces */}
+        <div style={{ borderBottom: "1px solid #1e2030" }}>
+          <SectionHeader label="Namespaces" open={namespacesOpen} onToggle={() => setNamespacesOpen((o) => !o)} />
+          {namespacesOpen && (
+            <CheckboxFilter
+              items={namespaces}
+              selected={selectedNamespaces}
+              onToggle={onToggleNamespace}
+              onToggleAll={onToggleAllNamespaces}
+              filterPlaceholder="Filter namespaces…"
+              fontSize="12px"
+              getLabel={nsLabel}
+            />
+          )}
+        </div>
+
+        {/* Resource Types */}
+        <div style={{ borderBottom: "1px solid #1e2030" }}>
+          <SectionHeader label="Resource Types" open={resourcesOpen} onToggle={() => setResourcesOpen((o) => !o)} />
+          {resourcesOpen && (
+            <CheckboxFilter
+              items={resources}
+              selected={selectedResources}
+              onToggle={onToggleResource}
+              onToggleAll={onToggleAllResources}
+              filterPlaceholder="Filter resource types…"
+              fontSize="12px"
+            />
+          )}
+        </div>
       </div>
     </div>
   );

@@ -60,6 +60,13 @@ function BackendBridge({
   return null;
 }
 
+interface GlobalFilter {
+  selectedNamespaces: Set<string>;
+  selectedResources: Set<string>;
+  knownNamespaces: Set<string>;
+  knownResources: Set<string>;
+}
+
 export default function App() {
   const selfUrl = window.location.origin;
   const [backendUrls, setBackendUrls] = useState<string[]>([selfUrl]);
@@ -67,13 +74,19 @@ export default function App() {
   const [configBackends, setConfigBackends] = useState<Set<string>>(new Set([selfUrl]));
   // URLs auto-discovered via /api/proxy-backends — not removable, not recursed into
   const [proxyBackendUrls, setProxyBackendUrls] = useState<Set<string>>(new Set());
+  const [disabledBackends, setDisabledBackends] = useState<Set<string>>(new Set());
   const [events, setEvents] = useState<VisualEvent[]>([]);
   const [duration, setDuration] = useState(10);
   const [clusterColorMap, setClusterColorMap] = useState<Map<string, string>>(new Map());
   // Maps backend URL → configured color from config.json
   const configColorsRef = useRef<Map<string, string>>(new Map());
-  // Per-cluster filter state keyed by clusterName
-  const [clusterFilterMap, setClusterFilterMap] = useState<Map<string, { selectedNamespaces: Set<string>; selectedResources: Set<string>; knownResources: Set<string>; knownNamespaces: Set<string> }>>(new Map());
+  // Global filter state shared across all clusters
+  const [globalFilter, setGlobalFilter] = useState<GlobalFilter>({
+    selectedNamespaces: new Set(),
+    selectedResources: new Set(),
+    knownNamespaces: new Set(),
+    knownResources: new Set(),
+  });
 
   useEffect(() => {
     fetch("/config.json")
@@ -124,100 +137,99 @@ export default function App() {
     setEvents((prev) => prev.map((e) => e.id === id ? { ...e, x, y } : e));
   }, []);
 
-  const autoSelectForCluster = useCallback((clusterName: string, namespaces: string[], resources: string[]) => {
-    if (!clusterName) return;
-    setClusterFilterMap((prev) => {
-      const isNew = !prev.has(clusterName);
-      const existing = prev.get(clusterName) ?? { selectedNamespaces: new Set<string>(), selectedResources: new Set<string>(), knownResources: new Set<string>(), knownNamespaces: new Set<string>() };
-      const newNs = new Set(existing.selectedNamespaces);
-      const newRes = new Set(existing.selectedResources);
-      const newKnownRes = new Set(existing.knownResources);
-      const newKnownNs = new Set(existing.knownNamespaces);
-      let changed = isNew;
+  const autoSelectGlobal = useCallback((namespaces: string[], resources: string[]) => {
+    setGlobalFilter((prev) => {
+      const newNs = new Set(prev.selectedNamespaces);
+      const newRes = new Set(prev.selectedResources);
+      const newKnownNs = new Set(prev.knownNamespaces);
+      const newKnownRes = new Set(prev.knownResources);
+      let changed = false;
+
       // "" sentinel always selected so non-namespaced resources are visible by default
       if (!newNs.has("")) { newNs.add(""); changed = true; }
+
       for (const ns of namespaces) {
-        const isActuallyNew = !newKnownNs.has(ns);
-        if (isActuallyNew) {
+        if (!newKnownNs.has(ns)) {
           newKnownNs.add(ns);
           changed = true;
-          // Auto-select new namespace only if first connection OR user has at least one real namespace selected
+          // Auto-select if first ever namespace seen OR user has at least one real namespace selected
           const hasRealNsSelected = [...newNs].some((n) => n !== "");
-          if (isNew || hasRealNsSelected) {
+          if (prev.knownNamespaces.size === 0 || hasRealNsSelected) {
             newNs.add(ns);
           }
         }
       }
+
       for (const rt of resources) {
-        const isActuallyNew = !newKnownRes.has(rt);
-        if (isActuallyNew) {
+        if (!newKnownRes.has(rt)) {
           newKnownRes.add(rt);
           changed = true;
-          // Auto-select new resource only if first connection OR user has some resources selected
-          if (isNew || newRes.size > 0) {
+          // Auto-select if first ever resource seen OR user has some resources selected
+          if (prev.knownResources.size === 0 || newRes.size > 0) {
             newRes.add(rt);
           }
         }
       }
+
       if (!changed) return prev;
-      return new Map(prev).set(clusterName, { selectedNamespaces: newNs, selectedResources: newRes, knownResources: newKnownRes, knownNamespaces: newKnownNs });
+      return { selectedNamespaces: newNs, selectedResources: newRes, knownNamespaces: newKnownNs, knownResources: newKnownRes };
     });
   }, []);
 
-  const handleToggleClusterNamespace = useCallback((clusterName: string, ns: string) => {
-    setClusterFilterMap((prev) => {
-      const existing = prev.get(clusterName);
-      if (!existing) return prev;
-      const next = new Set(existing.selectedNamespaces);
+  const handleToggleNamespace = useCallback((ns: string) => {
+    setGlobalFilter((prev) => {
+      const next = new Set(prev.selectedNamespaces);
       if (next.has(ns)) next.delete(ns); else next.add(ns);
-      return new Map(prev).set(clusterName, { ...existing, selectedNamespaces: next });
+      return { ...prev, selectedNamespaces: next };
     });
   }, []);
 
-  const handleToggleAllClusterNamespaces = useCallback((clusterName: string, namespaces: string[], selected: boolean) => {
-    setClusterFilterMap((prev) => {
-      const existing = prev.get(clusterName);
-      if (!existing) return prev;
-      const next = new Set(existing.selectedNamespaces);
+  const handleToggleAllNamespaces = useCallback((namespaces: string[], selected: boolean) => {
+    setGlobalFilter((prev) => {
+      const next = new Set(prev.selectedNamespaces);
       for (const ns of namespaces) {
         if (selected) next.add(ns); else next.delete(ns);
       }
-      return new Map(prev).set(clusterName, { ...existing, selectedNamespaces: next });
+      return { ...prev, selectedNamespaces: next };
     });
   }, []);
 
-  const handleToggleClusterResource = useCallback((clusterName: string, rt: string) => {
-    setClusterFilterMap((prev) => {
-      const existing = prev.get(clusterName);
-      if (!existing) return prev;
-      const next = new Set(existing.selectedResources);
+  const handleToggleResource = useCallback((rt: string) => {
+    setGlobalFilter((prev) => {
+      const next = new Set(prev.selectedResources);
       if (next.has(rt)) next.delete(rt); else next.add(rt);
-      return new Map(prev).set(clusterName, { ...existing, selectedResources: next });
+      return { ...prev, selectedResources: next };
     });
   }, []);
 
-  const handleToggleAllClusterResources = useCallback((clusterName: string, resources: string[], selected: boolean) => {
-    setClusterFilterMap((prev) => {
-      const existing = prev.get(clusterName);
-      if (!existing) return prev;
-      const next = new Set(existing.selectedResources);
+  const handleToggleAllResources = useCallback((resources: string[], selected: boolean) => {
+    setGlobalFilter((prev) => {
+      const next = new Set(prev.selectedResources);
       for (const rt of resources) {
         if (selected) next.add(rt); else next.delete(rt);
       }
-      return new Map(prev).set(clusterName, { ...existing, selectedResources: next });
+      return { ...prev, selectedResources: next };
+    });
+  }, []);
+
+  const handleToggleBackend = useCallback((url: string) => {
+    setDisabledBackends((prev) => {
+      const next = new Set(prev);
+      if (next.has(url)) next.delete(url); else next.add(url);
+      return next;
     });
   }, []);
 
   const handleConnectionChange = useCallback((url: string, info: BackendInfo) => {
     setBackendInfoMap((prev) => new Map(prev).set(url, info));
-    autoSelectForCluster(info.clusterName, info.namespaces, info.resources);
     if (info.clusterName) {
+      autoSelectGlobal(info.namespaces, info.resources);
       const color = getClusterColor(info.clusterName, configColorsRef.current.get(url));
       setClusterColorMap((prev) =>
         prev.get(info.clusterName) === color ? prev : new Map(prev).set(info.clusterName, color)
       );
     }
-  }, [autoSelectForCluster]);
+  }, [autoSelectGlobal]);
 
   const handleProxyBackendsDiscovered = useCallback((primaryUrl: string, backends: ProxyBackendInfo[]) => {
     const base = primaryUrl.replace(/\/+$/, "");
@@ -256,32 +268,44 @@ export default function App() {
 
   const backendsForSidebar = backendUrls.map((url) => {
     const info = backendInfoMap.get(url);
-    const clusterName = info?.clusterName ?? "";
-    const clusterFilter = clusterFilterMap.get(clusterName);
     return {
       url,
-      clusterName,
-      namespaces: info?.namespaces ?? [],
-      resources: info?.resources ?? [],
+      clusterName: info?.clusterName ?? "",
       status: info?.status ?? "connecting",
       removable: !configBackends.has(url) && !proxyBackendUrls.has(url),
-      selectedNamespaces: clusterFilter?.selectedNamespaces ?? new Set<string>(),
-      selectedResources: clusterFilter?.selectedResources ?? new Set<string>(),
+      enabled: !disabledBackends.has(url),
     };
   });
+
+  const allNamespaces = useMemo(() => {
+    return ["", ...Array.from(globalFilter.knownNamespaces).sort()];
+  }, [globalFilter.knownNamespaces]);
+
+  const allResources = useMemo(() => {
+    return Array.from(globalFilter.knownResources).sort();
+  }, [globalFilter.knownResources]);
+
+  // Set of cluster names whose backend is disabled — used to filter events
+  const disabledClusters = useMemo(() => {
+    const result = new Set<string>();
+    for (const [url, info] of backendInfoMap) {
+      if (disabledBackends.has(url) && info.clusterName) {
+        result.add(info.clusterName);
+      }
+    }
+    return result;
+  }, [disabledBackends, backendInfoMap]);
 
   const filteredEvents = useMemo(() => {
     const now = Date.now();
     return events.filter((e) => {
       if (now >= e.expiresAt) return false;
-      const clusterFilter = clusterFilterMap.get(e.cluster);
-      if (clusterFilter) {
-        if (!clusterFilter.selectedNamespaces.has(e.namespace)) return false;
-        if (!clusterFilter.selectedResources.has(e.resourceType)) return false;
-      }
+      if (disabledClusters.has(e.cluster)) return false;
+      if (!globalFilter.selectedNamespaces.has(e.namespace)) return false;
+      if (!globalFilter.selectedResources.has(e.resourceType)) return false;
       return true;
     });
-  }, [events, clusterFilterMap]);
+  }, [events, disabledClusters, globalFilter.selectedNamespaces, globalFilter.selectedResources]);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -293,10 +317,15 @@ export default function App() {
         onDurationChange={setDuration}
         onAddBackend={addBackend}
         onRemoveBackend={removeBackend}
-        onToggleClusterNamespace={handleToggleClusterNamespace}
-        onToggleAllClusterNamespaces={handleToggleAllClusterNamespaces}
-        onToggleClusterResource={handleToggleClusterResource}
-        onToggleAllClusterResources={handleToggleAllClusterResources}
+        onToggleBackend={handleToggleBackend}
+        namespaces={allNamespaces}
+        selectedNamespaces={globalFilter.selectedNamespaces}
+        onToggleNamespace={handleToggleNamespace}
+        onToggleAllNamespaces={handleToggleAllNamespaces}
+        resources={allResources}
+        selectedResources={globalFilter.selectedResources}
+        onToggleResource={handleToggleResource}
+        onToggleAllResources={handleToggleAllResources}
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
       />
