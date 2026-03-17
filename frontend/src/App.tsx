@@ -80,7 +80,6 @@ export default function App() {
   const selfUrl = window.location.origin;
   const [backendUrls, setBackendUrls] = useState<string[]>([selfUrl]);
   const [backendInfoMap, setBackendInfoMap] = useState<Map<string, BackendInfo>>(new Map());
-  const [configBackends, setConfigBackends] = useState<Set<string>>(new Set([selfUrl]));
   // URLs auto-discovered via /api/proxy-backends
   const [proxyBackendUrls, setProxyBackendUrls] = useState<Set<string>>(new Set());
   // Tracks which proxy backend URLs were last reported by each primary, for cleanup on reconnect
@@ -118,7 +117,6 @@ export default function App() {
         }
         configColorsRef.current = colorMap;
         if (extraUrls.length > 0) {
-          setConfigBackends((prev) => new Set([...prev, ...extraUrls]));
           setBackendUrls((prev) => {
             const next = [...prev];
             for (const url of extraUrls) {
