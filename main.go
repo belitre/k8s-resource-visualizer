@@ -73,6 +73,7 @@ func main() {
 		Manager:        manager,
 		Hub:            hub,
 		FrontendConfig: frontendConfig,
+		RemoteBackends: cfg.RemoteBackends,
 	}
 
 	mux := http.NewServeMux()

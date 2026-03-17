@@ -69,6 +69,32 @@ namespaces:
 	}
 }
 
+func TestLoadRemoteBackends(t *testing.T) {
+	content := `
+remoteBackends:
+  - name: cluster-b
+    url: "http://cluster-b:8080"
+  - name: cluster-c
+    url: "https://cluster-c.example.com"
+`
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	os.WriteFile(path, []byte(content), 0644)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	if len(cfg.RemoteBackends) != 2 {
+		t.Fatalf("expected 2 remote backends, got %d", len(cfg.RemoteBackends))
+	}
+	if cfg.RemoteBackends[0].Name != "cluster-b" || cfg.RemoteBackends[0].URL != "http://cluster-b:8080" {
+		t.Errorf("unexpected first backend: %+v", cfg.RemoteBackends[0])
+	}
+	if cfg.RemoteBackends[1].Name != "cluster-c" || cfg.RemoteBackends[1].URL != "https://cluster-c.example.com" {
+		t.Errorf("unexpected second backend: %+v", cfg.RemoteBackends[1])
+	}
+}
+
 func TestLoadInvalidYAML(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bad.yaml")
 	os.WriteFile(path, []byte(":::invalid"), 0644)
