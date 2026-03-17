@@ -27,6 +27,9 @@ spec:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "-log-level"
+            - {{ .Values.logLevel | quote }}
           ports:
             - containerPort: {{ .Values.port }}
               protocol: TCP

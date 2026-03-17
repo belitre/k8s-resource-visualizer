@@ -11,6 +11,7 @@ fullnameOverride: ""
 clusterName: "unknown"
 port: 8080
 serveFrontend: true
+logLevel: "info"  # debug, info, warn, error
 
 # Frontend config — only used when serveFrontend=true.
 # The local backend (this instance) is always included automatically.

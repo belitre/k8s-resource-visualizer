@@ -2,8 +2,9 @@ package ws
 
 import (
 	"encoding/json"
-	"log"
 	"sync"
+
+	"go.uber.org/zap"
 
 	"github.com/belitre/k8s-resource-visualizer/pkg/k8s"
 )
@@ -12,12 +13,14 @@ import (
 type Hub struct {
 	mu      sync.RWMutex
 	clients map[*Client]bool
+	log     *zap.Logger
 }
 
 // NewHub creates a new Hub.
-func NewHub() *Hub {
+func NewHub(log *zap.Logger) *Hub {
 	return &Hub{
 		clients: make(map[*Client]bool),
+		log:     log,
 	}
 }
 
@@ -26,7 +29,7 @@ func (h *Hub) Register(c *Client) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.clients[c] = true
-	log.Printf("client connected, total: %d", len(h.clients))
+	h.log.Info("client connected", zap.Int("total", len(h.clients)))
 }
 
 // Unregister removes a client from the hub.
@@ -36,7 +39,7 @@ func (h *Hub) Unregister(c *Client) {
 	if _, ok := h.clients[c]; ok {
 		delete(h.clients, c)
 		close(c.send)
-		log.Printf("client disconnected, total: %d", len(h.clients))
+		h.log.Info("client disconnected", zap.Int("total", len(h.clients)))
 	}
 }
 
@@ -59,7 +62,7 @@ func (h *Hub) broadcast(msgType string, data any) {
 	msg := ServerMessage{Type: msgType, Data: data}
 	bytes, err := json.Marshal(msg)
 	if err != nil {
-		log.Printf("error marshaling %s: %v", msgType, err)
+		h.log.Error("error marshaling message", zap.String("type", msgType), zap.Error(err))
 		return
 	}
 
@@ -77,6 +80,6 @@ func (h *Hub) broadcast(msgType string, data any) {
 
 // ServerMessage is sent from server to client.
 type ServerMessage struct {
-	Type string      `json:"type"`
-	Data any `json:"data"`
+	Type string `json:"type"`
+	Data any    `json:"data"`
 }

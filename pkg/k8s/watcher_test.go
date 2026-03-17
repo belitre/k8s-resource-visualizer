@@ -4,11 +4,12 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	fakedynamic "k8s.io/client-go/dynamic/fake"
-	"k8s.io/apimachinery/pkg/runtime"
 )
 
 func TestWatcherHandleEvent(t *testing.T) {
@@ -19,7 +20,7 @@ func TestWatcherHandleEvent(t *testing.T) {
 
 	w := NewWatcher(client, "test-cluster", gvr, "default", func(ev VisualEvent) {
 		received <- ev
-	})
+	}, zap.NewNop())
 
 	obj := &unstructured.Unstructured{}
 	obj.SetName("my-deploy")
@@ -71,7 +72,7 @@ func TestWatcherHandleEventActions(t *testing.T) {
 
 			w := NewWatcher(client, "cluster", gvr, "ns", func(ev VisualEvent) {
 				received <- ev
-			})
+			}, zap.NewNop())
 
 			obj := &unstructured.Unstructured{}
 			obj.SetName("pod-1")
@@ -98,7 +99,7 @@ func TestWatcherIgnoresBookmarkEvents(t *testing.T) {
 
 	w := NewWatcher(client, "cluster", gvr, "ns", func(ev VisualEvent) {
 		received <- ev
-	})
+	}, zap.NewNop())
 
 	obj := &unstructured.Unstructured{}
 	obj.SetName("pod-1")
@@ -117,7 +118,7 @@ func TestWatcherStop(t *testing.T) {
 	client := fakedynamic.NewSimpleDynamicClient(scheme)
 	gvr := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
 
-	w := NewWatcher(client, "cluster", gvr, "ns", func(ev VisualEvent) {})
+	w := NewWatcher(client, "cluster", gvr, "ns", func(ev VisualEvent) {}, zap.NewNop())
 	w.Stop()
 
 	if w.ctx.Err() == nil {

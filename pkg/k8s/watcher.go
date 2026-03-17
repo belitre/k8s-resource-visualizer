@@ -3,9 +3,9 @@ package k8s
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
+	"go.uber.org/zap"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -47,10 +47,11 @@ type Watcher struct {
 	cancel      context.CancelFunc
 	ctx         context.Context
 	lastRV      string // tracks the last seen resourceVersion to avoid replaying events on reconnect
+	log         *zap.Logger
 }
 
 // NewWatcher creates a new Watcher for the given GVR and namespace.
-func NewWatcher(client dynamic.Interface, clusterName string, gvr schema.GroupVersionResource, namespace string, callback EventCallback) *Watcher {
+func NewWatcher(client dynamic.Interface, clusterName string, gvr schema.GroupVersionResource, namespace string, callback EventCallback, log *zap.Logger) *Watcher {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Watcher{
 		client:      client,
@@ -60,6 +61,7 @@ func NewWatcher(client dynamic.Interface, clusterName string, gvr schema.GroupVe
 		callback:    callback,
 		cancel:      cancel,
 		ctx:         ctx,
+		log:         log,
 	}
 }
 
@@ -80,7 +82,7 @@ func (w *Watcher) Start() error {
 			if w.ctx.Err() != nil {
 				return nil
 			}
-			log.Printf("watch error for %s: %v, retrying in 5s", w.ResourceType(), err)
+			w.log.Warn("watch error, retrying in 5s", zap.String("resource", w.ResourceType()), zap.Error(err))
 			select {
 			case <-time.After(5 * time.Second):
 			case <-w.ctx.Done():
@@ -109,7 +111,7 @@ func (w *Watcher) watch() error {
 	if err != nil {
 		// 410 Gone means our resourceVersion is too old; reset and get a fresh watch.
 		if k8serrors.IsGone(err) {
-			log.Printf("watch resourceVersion too old for %s, resetting", w.ResourceType())
+			w.log.Warn("watch resourceVersion too old, resetting", zap.String("resource", w.ResourceType()))
 			w.lastRV = ""
 		}
 		return fmt.Errorf("starting watch for %s: %w", w.ResourceType(), err)
@@ -127,7 +129,7 @@ func (w *Watcher) watch() error {
 			// A watch.Error event with code 410 means resourceVersion too old.
 			if ev.Type == watch.Error {
 				if status, ok := ev.Object.(*metav1.Status); ok && status.Code == 410 {
-					log.Printf("watch got 410 Gone for %s, resetting resourceVersion", w.ResourceType())
+					w.log.Warn("watch got 410 Gone, resetting resourceVersion", zap.String("resource", w.ResourceType()))
 					w.lastRV = ""
 				}
 				return fmt.Errorf("watch error event for %s", w.ResourceType())
@@ -194,4 +196,3 @@ func formatResourceType(gvr schema.GroupVersionResource) string {
 	}
 	return gvr.Resource + "." + gvr.Group
 }
-

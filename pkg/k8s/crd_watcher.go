@@ -3,9 +3,9 @@ package k8s
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
+	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -31,7 +31,7 @@ func (m *Manager) WatchCRDs(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			log.Printf("CRD watch error: %v, retrying in 5s", err)
+			m.log.Warn("CRD watch error, retrying in 5s", zap.Error(err))
 			select {
 			case <-time.After(5 * time.Second):
 			case <-ctx.Done():
@@ -84,9 +84,9 @@ func (m *Manager) watchCRDsOnce(ctx context.Context, crdGenerations map[string]i
 // crdRediscoverDebounce waits for triggers and calls Rediscover after a 2s quiet window.
 func (m *Manager) crdRediscoverDebounce(ctx context.Context, trigger <-chan struct{}) {
 	debounce(ctx, trigger, 2*time.Second, func() {
-		log.Printf("CRD change detected, rediscovering resources")
+		m.log.Info("CRD change detected, rediscovering resources")
 		if err := m.Rediscover(); err != nil {
-			log.Printf("rediscover after CRD change failed: %v", err)
+			m.log.Error("rediscover after CRD change failed", zap.Error(err))
 		}
 	})
 }

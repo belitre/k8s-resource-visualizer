@@ -9,13 +9,14 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
 
 	"github.com/belitre/k8s-resource-visualizer/pkg/config"
 )
 
 // newProxyHandler builds a minimal Handler with the given remote backends and returns a ready mux.
 func newProxyHandler(backends []config.RemoteBackend) (*Handler, *http.ServeMux) {
-	h := &Handler{RemoteBackends: backends}
+	h := &Handler{RemoteBackends: backends, Log: zap.NewNop()}
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux, nil)
 	return h, mux
@@ -90,6 +91,7 @@ func TestRemoteBackendLookup(t *testing.T) {
 		RemoteBackends: []config.RemoteBackend{
 			{Name: "cluster-b", URL: "http://b:8080"},
 		},
+		Log: zap.NewNop(),
 	}
 
 	if b, ok := h.remoteBackend("cluster-b"); !ok || b.URL != "http://b:8080" {

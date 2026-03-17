@@ -187,10 +187,6 @@ The frontend can also connect directly to multiple backends — useful for local
 │       ├── Chart.yaml
 │       ├── values.yaml
 │       └── templates/
-├── k8s/                         # Raw Kubernetes manifests
-│   ├── rbac.yaml                # ServiceAccount + ClusterRole (all resources, watch verbs)
-│   ├── deployment.yaml          # Deployment + Service
-│   └── httproute.yaml           # Gateway API HTTPRoute
 └── .github/
     └── workflows/
         ├── ci.yml               # PR checks (build, test, helm validate, docker build)
@@ -555,14 +551,6 @@ httpRoute:
       namespace: default
   hostnames:
     - events.example.com
-```
-
-### Raw manifests (alternative to Helm)
-
-```bash
-kubectl apply -f k8s/rbac.yaml
-kubectl apply -f k8s/deployment.yaml
-kubectl apply -f k8s/httproute.yaml
 ```
 
 ## CI/CD

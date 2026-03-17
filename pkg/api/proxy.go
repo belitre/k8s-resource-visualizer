@@ -3,11 +3,11 @@ package api
 import (
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 
 	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
 )
 
 // ProxyBackendInfo is returned by GET /api/proxy-backends.
@@ -40,7 +40,7 @@ func (h *Handler) handleProxyWS(w http.ResponseWriter, r *http.Request) {
 	remoteURL := toWSURL(strings.TrimRight(backend.URL, "/")) + "/ws"
 	remoteConn, _, err := websocket.DefaultDialer.Dial(remoteURL, nil)
 	if err != nil {
-		log.Printf("proxy: failed to connect to remote backend %q (%s): %v", name, remoteURL, err)
+		h.Log.Warn("proxy: failed to connect to remote backend", zap.String("name", name), zap.String("url", remoteURL), zap.Error(err))
 		http.Error(w, "upstream unavailable", http.StatusBadGateway)
 		return
 	}
@@ -96,7 +96,7 @@ func (h *Handler) handleProxyAPI(w http.ResponseWriter, r *http.Request) {
 	targetURL := strings.TrimRight(backend.URL, "/") + "/api/" + path
 	resp, err := http.Get(targetURL) //nolint:noctx
 	if err != nil {
-		log.Printf("proxy: upstream %q error for %s: %v", name, path, err)
+		h.Log.Warn("proxy: upstream error", zap.String("name", name), zap.String("path", path), zap.Error(err))
 		http.Error(w, "upstream unavailable", http.StatusBadGateway)
 		return
 	}

@@ -1,10 +1,10 @@
 package ws
 
 import (
-	"log"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
 )
 
 const (
@@ -20,14 +20,16 @@ type Client struct {
 	hub  *Hub
 	conn *websocket.Conn
 	send chan []byte
+	log  *zap.Logger
 }
 
 // NewClient creates a new Client.
-func NewClient(hub *Hub, conn *websocket.Conn) *Client {
+func NewClient(hub *Hub, conn *websocket.Conn, log *zap.Logger) *Client {
 	return &Client{
 		hub:  hub,
 		conn: conn,
 		send: make(chan []byte, sendBufSz),
+		log:  log,
 	}
 }
 
@@ -49,7 +51,7 @@ func (c *Client) ReadPump() {
 		_, _, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
-				log.Printf("websocket error: %v", err)
+				c.log.Warn("websocket error", zap.Error(err))
 			}
 			break
 		}

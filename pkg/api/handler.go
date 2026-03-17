@@ -3,10 +3,10 @@ package api
 import (
 	"encoding/json"
 	"io/fs"
-	"log"
 	"net/http"
 
 	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
 
 	"github.com/belitre/k8s-resource-visualizer/pkg/config"
 	"github.com/belitre/k8s-resource-visualizer/pkg/k8s"
@@ -21,8 +21,9 @@ var upgrader = websocket.Upgrader{
 type Handler struct {
 	Manager        *k8s.Manager
 	Hub            *ws.Hub
-	FrontendConfig []byte                  // when non-nil, overrides /config.json
-	RemoteBackends []config.RemoteBackend  // backends this instance can proxy to
+	FrontendConfig []byte                 // when non-nil, overrides /config.json
+	RemoteBackends []config.RemoteBackend // backends this instance can proxy to
+	Log            *zap.Logger
 }
 
 // remoteBackend looks up a remote backend by name.
@@ -92,11 +93,11 @@ func (h *Handler) handleResources(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("websocket upgrade error: %v", err)
+		h.Log.Error("websocket upgrade error", zap.Error(err))
 		return
 	}
 
-	client := ws.NewClient(h.Hub, conn)
+	client := ws.NewClient(h.Hub, conn, h.Log)
 	h.Hub.Register(client)
 
 	go client.WritePump()

@@ -4,12 +4,13 @@ import (
 	"context"
 	"testing"
 
+	"go.uber.org/zap"
 	"github.com/belitre/k8s-resource-visualizer/pkg/config"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes/fake"
 	fakedynamic "k8s.io/client-go/dynamic/fake"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
 func newTestManager(namespaces []string, cfg *config.Config) *Manager {
@@ -27,7 +28,7 @@ func newTestManager(namespaces []string, cfg *config.Config) *Manager {
 		cfg = &config.Config{}
 	}
 
-	return NewManagerForTesting("test-cluster", k8sClient, dynClient, k8sClient.Discovery(), cfg)
+	return NewManagerForTesting("test-cluster", k8sClient, dynClient, k8sClient.Discovery(), cfg, zap.NewNop())
 }
 
 func TestManagerClusterName(t *testing.T) {
