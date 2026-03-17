@@ -45,16 +45,15 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, frontendFS fs.FS) {
 	mux.HandleFunc("GET /api/info", h.handleInfo)
 	mux.HandleFunc("GET /api/namespaces", h.handleNamespaces)
 	mux.HandleFunc("GET /api/resources", h.handleResources)
+	mux.HandleFunc("GET /api/proxy-backends", h.handleProxyBackends)
 	mux.HandleFunc("GET /ws", h.handleWebSocket)
 
 	if h.FrontendConfig != nil {
 		mux.HandleFunc("GET /config.json", h.handleFrontendConfig)
 	}
 
-	if len(h.RemoteBackends) > 0 {
-		mux.HandleFunc("GET /proxy/{name}/ws", h.handleProxyWS)
-		mux.HandleFunc("GET /proxy/{name}/api/{path...}", h.handleProxyAPI)
-	}
+	mux.HandleFunc("GET /proxy/{name}/ws", h.handleProxyWS)
+	mux.HandleFunc("GET /proxy/{name}/api/{path...}", h.handleProxyAPI)
 
 	if frontendFS != nil {
 		mux.Handle("GET /", http.FileServerFS(frontendFS))

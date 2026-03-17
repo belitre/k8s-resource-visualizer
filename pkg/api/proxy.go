@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"io"
 	"log"
 	"net/http"
@@ -8,6 +9,23 @@ import (
 
 	"github.com/gorilla/websocket"
 )
+
+// ProxyBackendInfo is returned by GET /api/proxy-backends.
+type ProxyBackendInfo struct {
+	Name  string `json:"name"`
+	Color string `json:"color,omitempty"`
+}
+
+// handleProxyBackends returns the list of remote backends this instance can proxy to.
+// The frontend uses this to auto-discover proxy connections without knowing internal URLs.
+func (h *Handler) handleProxyBackends(w http.ResponseWriter, r *http.Request) {
+	result := make([]ProxyBackendInfo, 0, len(h.RemoteBackends))
+	for _, b := range h.RemoteBackends {
+		result = append(result, ProxyBackendInfo{Name: b.Name, Color: b.Color})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
 
 // handleProxyWS bridges a client WebSocket connection to a remote backend's /ws endpoint.
 // The remote backend name must match an entry in Handler.RemoteBackends.

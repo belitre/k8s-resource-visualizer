@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,6 +19,53 @@ func newProxyHandler(backends []config.RemoteBackend) (*Handler, *http.ServeMux)
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux, nil)
 	return h, mux
+}
+
+func TestHandleProxyBackendsEmpty(t *testing.T) {
+	_, mux := newProxyHandler(nil)
+
+	req := httptest.NewRequest("GET", "/api/proxy-backends", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var result []ProxyBackendInfo
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("expected empty list, got %d items", len(result))
+	}
+}
+
+func TestHandleProxyBackendsList(t *testing.T) {
+	_, mux := newProxyHandler([]config.RemoteBackend{
+		{Name: "cluster-b", URL: "http://b:8080", Color: "#3b82f6"},
+		{Name: "cluster-c", URL: "http://c:8080"},
+	})
+
+	req := httptest.NewRequest("GET", "/api/proxy-backends", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var result []ProxyBackendInfo
+	if err := json.NewDecoder(w.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("expected 2 backends, got %d", len(result))
+	}
+	if result[0].Name != "cluster-b" || result[0].Color != "#3b82f6" {
+		t.Errorf("unexpected first backend: %+v", result[0])
+	}
+	if result[1].Name != "cluster-c" || result[1].Color != "" {
+		t.Errorf("unexpected second backend: %+v", result[1])
+	}
 }
 
 func TestToWSURL(t *testing.T) {

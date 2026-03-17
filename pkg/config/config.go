@@ -28,8 +28,9 @@ type NamespaceFilter struct {
 
 // RemoteBackend is a backend in another cluster that this instance can proxy to.
 type RemoteBackend struct {
-	Name string `yaml:"name"`
-	URL  string `yaml:"url"`
+	Name  string `yaml:"name"`
+	URL   string `yaml:"url"`
+	Color string `yaml:"color,omitempty"`
 }
 
 // Config is the backend configuration.

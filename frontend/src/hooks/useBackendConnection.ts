@@ -59,10 +59,12 @@ export function useBackendConnection(
       wsRef.current = ws;
 
       ws.onopen = () => {
+        if (!active) return;
         setState((prev) => ({ ...prev, status: "connected" }));
       };
 
       ws.onmessage = (evt) => {
+        if (!active) return;
         const msg: ServerMessage = JSON.parse(evt.data);
         if (msg.type === "event") {
           const event: VisualEvent = {
@@ -79,10 +81,9 @@ export function useBackendConnection(
       };
 
       ws.onclose = () => {
+        if (!active) return;
         setState((prev) => ({ ...prev, status: "disconnected" }));
-        if (active) {
-          reconnectTimeoutRef.current = setTimeout(connect, 3000);
-        }
+        reconnectTimeoutRef.current = setTimeout(connect, 3000);
       };
 
       ws.onerror = () => {
