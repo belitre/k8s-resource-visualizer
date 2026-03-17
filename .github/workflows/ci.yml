@@ -65,5 +65,3 @@ jobs:
           context: .
           push: false
           tags: k8s-resource-visualizer:pr-${{ github.event.pull_request.number }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
