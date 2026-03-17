@@ -99,7 +99,7 @@ func TestHandleResources(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	var resources []string
+	var resources []k8s.ResourceInfo
 	if err := json.NewDecoder(w.Body).Decode(&resources); err != nil {
 		t.Fatalf("decode error: %v", err)
 	}

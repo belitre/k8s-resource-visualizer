@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import type { ServerMessage, VisualEvent } from "../types";
+import type { ResourceInfo, ServerMessage, VisualEvent } from "../types";
 
 interface BackendState {
   clusterName: string;
   namespaces: string[];
-  resources: string[];
+  resources: ResourceInfo[];
   status: "connecting" | "connected" | "disconnected" | "error";
 }
 
@@ -38,7 +38,7 @@ export function useBackendConnection(
           ...prev,
           clusterName: info.clusterName,
           namespaces: namespaces as string[],
-          resources: resources as string[],
+          resources: resources as ResourceInfo[],
         }));
       })
       .catch((err) => {

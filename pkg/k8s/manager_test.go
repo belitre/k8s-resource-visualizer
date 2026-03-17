@@ -131,16 +131,19 @@ func TestManagerStop(t *testing.T) {
 func TestManagerSetOnResourcesChanged(t *testing.T) {
 	m := newTestManager(nil, nil)
 
-	var got []string
-	m.SetOnResourcesChanged(func(resources []string) {
+	var got []ResourceInfo
+	m.SetOnResourcesChanged(func(resources []ResourceInfo) {
 		got = resources
 	})
 
 	if m.onResourcesChanged == nil {
 		t.Fatal("expected onResourcesChanged to be set")
 	}
-	m.onResourcesChanged([]string{"pods", "deployments.apps"})
-	if len(got) != 2 || got[0] != "pods" {
+	m.onResourcesChanged([]ResourceInfo{
+		{Group: "", Version: "v1", Resource: "pods", Key: "pods"},
+		{Group: "apps", Version: "v1", Resource: "deployments", Key: "deployments.apps"},
+	})
+	if len(got) != 2 || got[0].Key != "pods" {
 		t.Errorf("callback received unexpected resources: %v", got)
 	}
 }

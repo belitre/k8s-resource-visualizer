@@ -4,14 +4,14 @@ import { Sidebar } from "./components/Sidebar";
 import { useBackendConnection } from "./hooks/useBackendConnection";
 import { mergeEvent } from "./utils/eventMerge";
 import { getClusterColor } from "./utils/clusterColor";
-import type { VisualEvent } from "./types";
+import type { ResourceInfo, VisualEvent } from "./types";
 
 type BackendEntry = string | { url: string; color?: string };
 
 interface BackendInfo {
   clusterName: string;
   namespaces: string[];
-  resources: string[];
+  resources: ResourceInfo[];
   status: string;
 }
 
@@ -137,7 +137,7 @@ export default function App() {
     setEvents((prev) => prev.map((e) => e.id === id ? { ...e, x, y } : e));
   }, []);
 
-  const autoSelectGlobal = useCallback((namespaces: string[], resources: string[]) => {
+  const autoSelectGlobal = useCallback((namespaces: string[], resources: ResourceInfo[]) => {
     setGlobalFilter((prev) => {
       const newNs = new Set(prev.selectedNamespaces);
       const newRes = new Set(prev.selectedResources);
@@ -160,13 +160,13 @@ export default function App() {
         }
       }
 
-      for (const rt of resources) {
-        if (!newKnownRes.has(rt)) {
-          newKnownRes.add(rt);
+      for (const r of resources) {
+        if (!newKnownRes.has(r.key)) {
+          newKnownRes.add(r.key);
           changed = true;
           // Auto-select if first ever resource seen OR user has some resources selected
           if (prev.knownResources.size === 0 || newRes.size > 0) {
-            newRes.add(rt);
+            newRes.add(r.key);
           }
         }
       }
@@ -278,12 +278,20 @@ export default function App() {
   });
 
   const allNamespaces = useMemo(() => {
-    return ["", ...Array.from(globalFilter.knownNamespaces).sort()];
-  }, [globalFilter.knownNamespaces]);
+    const nsSet = new Set<string>();
+    for (const info of backendInfoMap.values()) {
+      for (const ns of info.namespaces) nsSet.add(ns);
+    }
+    return ["", ...Array.from(nsSet).sort()];
+  }, [backendInfoMap]);
 
   const allResources = useMemo(() => {
-    return Array.from(globalFilter.knownResources).sort();
-  }, [globalFilter.knownResources]);
+    const map = new Map<string, ResourceInfo>();
+    for (const info of backendInfoMap.values()) {
+      for (const r of info.resources) map.set(r.key, r);
+    }
+    return Array.from(map.values()).sort((a, b) => a.key.localeCompare(b.key));
+  }, [backendInfoMap]);
 
   // Set of cluster names whose backend is disabled — used to filter events
   const disabledClusters = useMemo(() => {

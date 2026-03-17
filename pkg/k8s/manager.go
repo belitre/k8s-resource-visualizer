@@ -28,7 +28,7 @@ type Manager struct {
 	mu                 sync.Mutex
 	watchersByGVR      map[string]*Watcher
 	callback             EventCallback
-	onResourcesChanged   func([]string)
+	onResourcesChanged   func([]ResourceInfo)
 	onNamespacesChanged  func([]string)
 }
 
@@ -86,7 +86,7 @@ func NewManagerForTesting(clusterName string, k8sClient kubernetes.Interface, dy
 }
 
 // SetOnResourcesChanged registers a callback invoked after Rediscover changes the watcher set.
-func (m *Manager) SetOnResourcesChanged(fn func([]string)) {
+func (m *Manager) SetOnResourcesChanged(fn func([]ResourceInfo)) {
 	m.onResourcesChanged = fn
 }
 
@@ -188,20 +188,26 @@ func (m *Manager) Rediscover() error {
 }
 
 // ListWatchedResources returns the resource types currently being watched.
-func (m *Manager) ListWatchedResources() []string {
+func (m *Manager) ListWatchedResources() []ResourceInfo {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	seen := make(map[string]bool)
-	var resources []string
+	var resources []ResourceInfo
 	for _, w := range m.watchersByGVR {
-		rt := w.ResourceType()
-		if !seen[rt] {
-			seen[rt] = true
-			resources = append(resources, rt)
+		key := w.ResourceType()
+		if !seen[key] {
+			seen[key] = true
+			gvr := w.GVR()
+			resources = append(resources, ResourceInfo{
+				Group:    gvr.Group,
+				Version:  gvr.Version,
+				Resource: gvr.Resource,
+				Key:      key,
+			})
 		}
 	}
-	sort.Strings(resources)
+	sort.Slice(resources, func(i, j int) bool { return resources[i].Key < resources[j].Key })
 	return resources
 }
 

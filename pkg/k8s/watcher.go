@@ -14,6 +14,15 @@ import (
 	"k8s.io/client-go/dynamic"
 )
 
+// ResourceInfo describes a watched Kubernetes resource with its full GVR plus a display key.
+// Key matches VisualEvent.ResourceType (e.g. "deployments.apps", "pods").
+type ResourceInfo struct {
+	Group    string `json:"group"`
+	Version  string `json:"version"`
+	Resource string `json:"resource"`
+	Key      string `json:"key"`
+}
+
 // VisualEvent is the event struct sent to the frontend.
 type VisualEvent struct {
 	ID           string    `json:"id"`
@@ -57,6 +66,11 @@ func NewWatcher(client dynamic.Interface, clusterName string, gvr schema.GroupVe
 // ResourceType returns the resource type string (e.g. "deployments.apps").
 func (w *Watcher) ResourceType() string {
 	return formatResourceType(w.gvr)
+}
+
+// GVR returns the GroupVersionResource for this watcher.
+func (w *Watcher) GVR() schema.GroupVersionResource {
+	return w.gvr
 }
 
 // Start begins watching. Blocks until stopped or context cancelled.

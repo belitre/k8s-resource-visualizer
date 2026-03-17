@@ -57,7 +57,7 @@ func main() {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	manager.SetOnResourcesChanged(func(resources []string) {
+	manager.SetOnResourcesChanged(func(resources []k8s.ResourceInfo) {
 		hub.BroadcastResourcesUpdated(resources)
 	})
 	manager.SetOnNamespacesChanged(func(namespaces []string) {

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ResourceInfo } from "../types";
 
 interface BackendInfo {
   url: string;
@@ -19,7 +20,7 @@ interface SidebarProps {
   selectedNamespaces: Set<string>;
   onToggleNamespace: (ns: string) => void;
   onToggleAllNamespaces: (namespaces: string[], selected: boolean) => void;
-  resources: string[];
+  resources: ResourceInfo[];
   selectedResources: Set<string>;
   onToggleResource: (rt: string) => void;
   onToggleAllResources: (resources: string[], selected: boolean) => void;
@@ -147,6 +148,170 @@ function BackendItem({ backend, onRemove, onToggle }: {
   );
 }
 
+function TriCheckbox({
+  allSelected,
+  someSelected,
+  onChange,
+  style,
+}: {
+  allSelected: boolean;
+  someSelected: boolean;
+  onChange: (checked: boolean) => void;
+  style?: React.CSSProperties;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = someSelected && !allSelected;
+  }, [someSelected, allSelected]);
+  return (
+    <input
+      type="checkbox"
+      ref={ref}
+      checked={allSelected}
+      onChange={(e) => onChange(e.target.checked)}
+      style={style}
+    />
+  );
+}
+
+function ResourceTree({
+  resources,
+  selected,
+  onToggle,
+  onToggleAll,
+  filter,
+}: {
+  resources: ResourceInfo[];
+  selected: Set<string>;
+  onToggle: (key: string) => void;
+  onToggleAll: (keys: string[], checked: boolean) => void;
+  filter: string;
+}) {
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  const [openVersions, setOpenVersions] = useState<Set<string>>(new Set());
+
+  // When filter is active, treat all nodes as open
+  const isGroupOpen = (group: string) => filter ? true : openGroups.has(group);
+  const isVersionOpen = (versionKey: string) => filter ? true : openVersions.has(versionKey);
+
+  const lc = filter.toLowerCase();
+
+  // Build tree: group → version → ResourceInfo[]
+  // Apply filter: a resource matches if group, version, or resource name contains the filter
+  const tree = new Map<string, Map<string, ResourceInfo[]>>();
+  for (const r of resources) {
+    const matches =
+      !filter ||
+      r.group.toLowerCase().includes(lc) ||
+      r.version.toLowerCase().includes(lc) ||
+      r.resource.toLowerCase().includes(lc);
+    if (!matches) continue;
+    if (!tree.has(r.group)) tree.set(r.group, new Map());
+    const vMap = tree.get(r.group)!;
+    if (!vMap.has(r.version)) vMap.set(r.version, []);
+    vMap.get(r.version)!.push(r);
+  }
+
+  const sortedGroups = Array.from(tree.keys()).sort();
+
+  // Collect all visible keys for "select all"
+  const allVisibleKeys = sortedGroups.flatMap((g) =>
+    Array.from(tree.get(g)!.values()).flatMap((rs) => rs.map((r) => r.key))
+  );
+  const allVisibleSelected = allVisibleKeys.length > 0 && allVisibleKeys.every((k) => selected.has(k));
+  const someVisibleSelected = allVisibleKeys.some((k) => selected.has(k));
+
+  const toggleGroup = (group: string) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group); else next.add(group);
+      return next;
+    });
+  };
+
+  const toggleVersion = (versionKey: string) => {
+    setOpenVersions((prev) => {
+      const next = new Set(prev);
+      if (next.has(versionKey)) next.delete(versionKey); else next.add(versionKey);
+      return next;
+    });
+  };
+
+  const labelStyle: React.CSSProperties = { display: "flex", alignItems: "center", gap: "6px", padding: "2px 0", cursor: "pointer", fontSize: "12px" };
+
+  return (
+    <div style={{ padding: "0 16px 8px" }}>
+      <label style={{ ...labelStyle, fontWeight: 600, borderBottom: "1px solid #1e2030", paddingBottom: "6px", marginBottom: "4px" }}>
+        <TriCheckbox allSelected={allVisibleSelected} someSelected={someVisibleSelected} onChange={(checked) => onToggleAll(allVisibleKeys, checked)} />
+        Select all{filter ? ` (${allVisibleKeys.length})` : ""}
+      </label>
+
+      {sortedGroups.map((group) => {
+        const vMap = tree.get(group)!;
+        const sortedVersions = Array.from(vMap.keys()).sort();
+        const groupKeys = sortedVersions.flatMap((v) => vMap.get(v)!.map((r) => r.key));
+        const groupAllSelected = groupKeys.every((k) => selected.has(k));
+        const groupSomeSelected = groupKeys.some((k) => selected.has(k));
+        const groupOpen = isGroupOpen(group);
+
+        return (
+          <div key={group}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "2px 0" }}>
+              <TriCheckbox
+                allSelected={groupAllSelected}
+                someSelected={groupSomeSelected}
+                onChange={(checked) => onToggleAll(groupKeys, checked)}
+              />
+              <button
+                onClick={() => toggleGroup(group)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#c8cdd8", fontSize: "12px", fontWeight: 600, padding: 0, display: "flex", alignItems: "center", gap: "4px" }}
+              >
+                <span style={{ fontSize: "9px", color: "#64748b" }}>{groupOpen ? "▼" : "▶"}</span>
+                {group || '""'}
+              </button>
+            </div>
+
+            {groupOpen && sortedVersions.map((version) => {
+              const versionKey = `${group}/${version}`;
+              const vResources = vMap.get(version)!;
+              const vKeys = vResources.map((r) => r.key);
+              const vAllSelected = vKeys.every((k) => selected.has(k));
+              const vSomeSelected = vKeys.some((k) => selected.has(k));
+              const vOpen = isVersionOpen(versionKey);
+
+              return (
+                <div key={version} style={{ paddingLeft: "20px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "2px 0" }}>
+                    <TriCheckbox
+                      allSelected={vAllSelected}
+                      someSelected={vSomeSelected}
+                      onChange={(checked) => onToggleAll(vKeys, checked)}
+                    />
+                    <button
+                      onClick={() => toggleVersion(versionKey)}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: "11px", padding: 0, display: "flex", alignItems: "center", gap: "4px" }}
+                    >
+                      <span style={{ fontSize: "9px", color: "#64748b" }}>{vOpen ? "▼" : "▶"}</span>
+                      {version || '""'}
+                    </button>
+                  </div>
+
+                  {vOpen && vResources.map((r) => (
+                    <label key={r.key} style={{ ...labelStyle, paddingLeft: "20px" }}>
+                      <input type="checkbox" checked={selected.has(r.key)} onChange={() => onToggle(r.key)} />
+                      {r.resource || '""'}
+                    </label>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Sidebar({
   backends,
   duration,
@@ -169,6 +334,7 @@ export function Sidebar({
   const [backendsOpen, setBackendsOpen] = useState(true);
   const [namespacesOpen, setNamespacesOpen] = useState(true);
   const [resourcesOpen, setResourcesOpen] = useState(true);
+  const [resourceFilter, setResourceFilter] = useState("");
 
   const nsLabel = (item: string) => item === "" ? "Non-namespaced" : item;
 
@@ -266,13 +432,23 @@ export function Sidebar({
         <div style={{ borderBottom: "1px solid #1e2030" }}>
           <SectionHeader label="Resource Types" open={resourcesOpen} onToggle={() => setResourcesOpen((o) => !o)} />
           {resourcesOpen && (
-            <CheckboxFilter
-              items={resources}
+            <div style={{ padding: "0 16px 4px" }}>
+              <input
+                type="text"
+                placeholder="Filter resource types…"
+                value={resourceFilter}
+                onChange={(e) => setResourceFilter(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+          )}
+          {resourcesOpen && (
+            <ResourceTree
+              resources={resources}
               selected={selectedResources}
               onToggle={onToggleResource}
               onToggleAll={onToggleAllResources}
-              filterPlaceholder="Filter resource types…"
-              fontSize="12px"
+              filter={resourceFilter}
             />
           )}
         </div>

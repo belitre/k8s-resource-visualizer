@@ -1,6 +1,12 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
+import type { ResourceInfo } from "../types";
+
+function makeResource(group: string, version: string, resource: string): ResourceInfo {
+  const key = group ? `${resource}.${group}` : resource;
+  return { group, version, resource, key };
+}
 
 function renderSidebar(overrides = {}) {
   const defaults = {
@@ -14,7 +20,7 @@ function renderSidebar(overrides = {}) {
     selectedNamespaces: new Set<string>(),
     onToggleNamespace: vi.fn(),
     onToggleAllNamespaces: vi.fn(),
-    resources: [],
+    resources: [] as ResourceInfo[],
     selectedResources: new Set<string>(),
     onToggleResource: vi.fn(),
     onToggleAllResources: vi.fn(),
@@ -165,36 +171,108 @@ describe("Sidebar", () => {
     expect(props.onToggleAllNamespaces).toHaveBeenCalledWith(["", "default", "kube-system"], true);
   });
 
-  it("renders global resource types section", () => {
+  it("renders Resource Types section header", () => {
     renderSidebar({
-      resources: ["deployments.apps", "pods"],
-      selectedResources: new Set(["deployments.apps", "pods"]),
+      resources: [makeResource("apps", "v1", "deployments")],
+      selectedResources: new Set(["deployments.apps"]),
     });
     expect(screen.getByText("Resource Types")).toBeInTheDocument();
-    expect(screen.getByText("deployments.apps")).toBeInTheDocument();
-    expect(screen.getByText("pods")).toBeInTheDocument();
+  });
+
+  it("shows group when expanded", () => {
+    renderSidebar({
+      resources: [makeResource("apps", "v1", "deployments")],
+      selectedResources: new Set(["deployments.apps"]),
+    });
+    expect(screen.getByText("apps")).toBeInTheDocument();
+  });
+
+  it("shows resource after expanding group and version", () => {
+    renderSidebar({
+      resources: [makeResource("apps", "v1", "deployments")],
+      selectedResources: new Set(["deployments.apps"]),
+    });
+    // Click group to expand
+    fireEvent.click(screen.getByText("apps"));
+    // Click version to expand
+    fireEvent.click(screen.getByText("v1"));
+    expect(screen.getByText("deployments")).toBeInTheDocument();
   });
 
   it("calls onToggleResource when clicking a resource checkbox", () => {
     const { props } = renderSidebar({
-      resources: ["pods"],
+      resources: [makeResource("apps", "v1", "deployments")],
       selectedResources: new Set<string>(),
     });
+    // Expand group and version via filter (auto-expands)
+    fireEvent.change(screen.getByPlaceholderText("Filter resource types…"), { target: { value: "deploy" } });
     const checkbox = screen.getAllByRole("checkbox").find((cb) =>
-      cb.closest("label")?.textContent?.includes("pods")
+      cb.closest("label")?.textContent?.includes("deployments")
     )!;
     fireEvent.click(checkbox);
-    expect(props.onToggleResource).toHaveBeenCalledWith("pods");
+    expect(props.onToggleResource).toHaveBeenCalledWith("deployments.apps");
   });
 
-  it("calls onToggleAllResources for select all in resource types", () => {
+  it("calls onToggleAllResources for select all", () => {
     const { props } = renderSidebar({
-      resources: ["deployments.apps", "pods"],
+      resources: [makeResource("apps", "v1", "deployments"), makeResource("", "v1", "pods")],
       selectedResources: new Set<string>(),
     });
-    const resSelectAll = screen.getAllByText("Select all")[1].closest("label")!.querySelector("input")!;
-    fireEvent.click(resSelectAll);
-    expect(props.onToggleAllResources).toHaveBeenCalledWith(["deployments.apps", "pods"], true);
+    const selectAllLabel = screen.getAllByText(/Select all/)[1].closest("label")!.querySelector("input")!;
+    fireEvent.click(selectAllLabel);
+    expect(props.onToggleAllResources).toHaveBeenCalledWith(
+      expect.arrayContaining(["deployments.apps", "pods"]),
+      true
+    );
+  });
+
+  it("filters resource types by search text and auto-expands", () => {
+    renderSidebar({
+      resources: [
+        makeResource("apps", "v1", "deployments"),
+        makeResource("", "v1", "pods"),
+        makeResource("", "v1", "services"),
+      ],
+      selectedResources: new Set(["deployments.apps", "pods", "services"]),
+    });
+    fireEvent.change(screen.getByPlaceholderText("Filter resource types…"), { target: { value: "deploy" } });
+    expect(screen.getByText("deployments")).toBeInTheDocument();
+    expect(screen.queryByText("pods")).not.toBeInTheDocument();
+    expect(screen.queryByText("services")).not.toBeInTheDocument();
+  });
+
+  it("select all with resource filter only toggles filtered items", () => {
+    const { props } = renderSidebar({
+      resources: [
+        makeResource("apps", "v1", "deployments"),
+        makeResource("", "v1", "pods"),
+      ],
+      selectedResources: new Set<string>(),
+    });
+    fireEvent.change(screen.getByPlaceholderText("Filter resource types…"), { target: { value: "deploy" } });
+    const selectAllLabel = screen.getAllByText(/Select all/)[1].closest("label")!.querySelector("input")!;
+    fireEvent.click(selectAllLabel);
+    expect(props.onToggleAllResources).toHaveBeenCalledWith(["deployments.apps"], true);
+  });
+
+  it("group tristate checkbox selects all resources in group", () => {
+    const { props } = renderSidebar({
+      resources: [
+        makeResource("apps", "v1", "deployments"),
+        makeResource("apps", "v1", "replicasets"),
+      ],
+      selectedResources: new Set<string>(),
+    });
+    // Use filter to auto-expand
+    fireEvent.change(screen.getByPlaceholderText("Filter resource types…"), { target: { value: "apps" } });
+    // Find group-level tristate checkbox (first checkbox after "Select all")
+    const groupCheckboxes = screen.getAllByRole("checkbox").filter((cb) => !cb.closest("label"));
+    // The group checkbox is not inside a label — it's in a div
+    fireEvent.click(groupCheckboxes[0]);
+    expect(props.onToggleAllResources).toHaveBeenCalledWith(
+      expect.arrayContaining(["deployments.apps", "replicasets.apps"]),
+      true
+    );
   });
 
   it("filters namespaces by search text", () => {
@@ -206,17 +284,6 @@ describe("Sidebar", () => {
     expect(screen.getByText("kube-system")).toBeInTheDocument();
     expect(screen.queryByText("default")).not.toBeInTheDocument();
     expect(screen.queryByText("monitoring")).not.toBeInTheDocument();
-  });
-
-  it("filters resource types by search text", () => {
-    renderSidebar({
-      resources: ["deployments.apps", "pods", "services"],
-      selectedResources: new Set(["deployments.apps", "pods", "services"]),
-    });
-    fireEvent.change(screen.getByPlaceholderText("Filter resource types…"), { target: { value: "deploy" } });
-    expect(screen.getByText("deployments.apps")).toBeInTheDocument();
-    expect(screen.queryByText("pods")).not.toBeInTheDocument();
-    expect(screen.queryByText("services")).not.toBeInTheDocument();
   });
 
   it("select all with namespace filter only toggles filtered items", () => {
@@ -244,13 +311,21 @@ describe("Sidebar", () => {
 
   it("collapses and expands resource types section", () => {
     renderSidebar({
-      resources: ["pods"],
+      resources: [makeResource("apps", "v1", "deployments")],
+      selectedResources: new Set(["deployments.apps"]),
+    });
+    expect(screen.getByText("apps")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Resource Types"));
+    expect(screen.queryByText("apps")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Resource Types"));
+    expect(screen.getByText("apps")).toBeInTheDocument();
+  });
+
+  it("shows empty string group as double quotes", () => {
+    renderSidebar({
+      resources: [makeResource("", "v1", "pods")],
       selectedResources: new Set(["pods"]),
     });
-    expect(screen.getByText("pods")).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Resource Types"));
-    expect(screen.queryByText("pods")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText("Resource Types"));
-    expect(screen.getByText("pods")).toBeInTheDocument();
+    expect(screen.getByText('""')).toBeInTheDocument();
   });
 });

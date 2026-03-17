@@ -15,7 +15,14 @@ export interface VisualEvent {
   refreshedAt: number; // ms timestamp — when the card was last refreshed (same as createdAt if never refreshed)
 }
 
+export interface ResourceInfo {
+  group: string;
+  version: string;
+  resource: string;
+  key: string; // matches VisualEvent.resourceType (e.g. "deployments.apps", "pods")
+}
+
 export type ServerMessage =
   | { type: "event"; data: Omit<VisualEvent, "x" | "y"> }
-  | { type: "resources_updated"; data: string[] }
+  | { type: "resources_updated"; data: ResourceInfo[] }
   | { type: "namespaces_updated"; data: string[] };

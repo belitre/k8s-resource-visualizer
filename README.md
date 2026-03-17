@@ -30,12 +30,13 @@ A real-time Kubernetes resource visualizer with a dark-themed UI. Watches all re
 
 Key features:
 
-- **Live resource discovery** — automatically detects new CRDs and starts watching them without restart; stops watching removed CRDs
-- **Live namespace discovery** — detects new/deleted namespaces and updates filters automatically
+- **Live resource discovery** — automatically detects new CRDs and starts watching them without restart; stops watching removed CRDs; filter list reflects the live union across all connected clusters
+- **Live namespace discovery** — detects new/deleted namespaces and updates filters automatically; removed namespaces disappear from the filter when no cluster has them
 - **Multi-cluster** — deploy one backend per cluster; the frontend connects to all of them and shows events side by side
 - **Proxy mode** — a single backend can proxy WebSocket and REST traffic to other backends, so the browser only needs to reach one URL
-- **Per-cluster filters** — namespace and resource type filters are independent per cluster
-- **Smart filter auto-select** — new namespaces/resources are auto-selected only when the user already has filters active for that cluster
+- **Global filters** — shared namespace and resource type filters across all clusters; per-backend enable/disable toggle
+- **Grouped resource filter** — resource types are displayed as a three-level tree (Group → Version → Resource) with tristate checkboxes for batch select/deselect
+- **Smart filter auto-select** — new namespaces/resources are auto-selected only when the user already has filters active; previously deselected items are never re-selected
 - **Non-namespaced resources** — cluster-scoped resources (ClusterRole, Node, etc.) are tracked under a "Non-namespaced" filter entry
 - **Configurable** — include/exclude specific resources and namespaces via a YAML config file
 
@@ -117,14 +118,17 @@ The frontend can also connect directly to multiple backends — useful for local
 
 ### What the frontend does
 
-- Connects to one or more backend URLs (pre-configured or added at runtime via the sidebar)
+- Auto-connects to the backend that served it (`window.location.origin`) — works with any hostname/ingress with no configuration
+- Discovers proxy backends automatically via `GET /api/proxy-backends` and opens proxied connections through the primary backend
 - Opens a WebSocket per backend for live event streaming
 - Handles `resources_updated` and `namespaces_updated` WebSocket messages to keep filters in sync without page reload
 - Displays events as draggable cards (green = Created, yellow = Updated, red = Deleted)
 - Cards show cluster, action, resource name, resource type, and namespace badge (when applicable)
 - Cards fade out after a configurable duration; clicking or dragging resets the timer
 - Duplicate events (same resource + action within the expiry window) are merged and show a repeat counter
-- Per-cluster independent filters for namespace and resource type
+- **Global namespace filter** — union of all namespaces across connected clusters; removed namespaces disappear automatically
+- **Global resource type filter** — three-level tree (Group → Version → Resource) with tristate checkboxes; reflects the live union across all clusters
+- **Per-backend toggle** — each backend can be independently enabled/disabled to suppress its events without disconnecting
 
 ## Prerequisites
 
@@ -140,33 +144,38 @@ The frontend can also connect directly to multiple backends — useful for local
 .
 ├── main.go                      # Entry point: wires k8s manager, hub, HTTP server
 ├── Dockerfile                   # Multi-stage build (Go 1.25.7 + Node 25.6)
-├── Makefile                     # Build, test, lint, docker, helm, release targets
+├── Makefile                     # Build, test, lint, docker, helm, dev, release targets
 ├── pkg/
 │   ├── config/
 │   │   └── config.go            # YAML config: resource/namespace filters + remote backends
 │   ├── k8s/
 │   │   ├── manager.go           # Resource discovery, watcher lifecycle, rediscover on change
-│   │   ├── watcher.go           # Per-GVR dynamic watcher (tracks resourceVersion to avoid replays)
+│   │   ├── watcher.go           # Per-GVR dynamic watcher; defines VisualEvent and ResourceInfo
 │   │   ├── crd_watcher.go       # Watches CRDs; triggers Rediscover() on add/delete/spec change
 │   │   └── namespace_watcher.go # Watches Namespaces; notifies on add/delete
 │   ├── ws/
 │   │   ├── hub.go               # WebSocket hub: broadcasts events, resources_updated, namespaces_updated
 │   │   └── client.go            # Per-connection WebSocket read/write pumps
 │   └── api/
-│       └── handler.go           # REST handlers, WebSocket upgrade, proxy routes
+│       ├── handler.go           # REST handlers, WebSocket upgrade, proxy routes
+│       └── proxy.go             # HTTP and WebSocket reverse proxy to remote backends
 ├── frontend/                    # React + TypeScript + Vite
 │   ├── public/
-│   │   └── config.json          # Pre-configured backend URLs (local dev)
+│   │   └── config.json          # Optional: selfColor + extra backend URLs for local dev
 │   └── src/
-│       ├── App.tsx              # Root: event state, per-cluster filter map, backend orchestration
-│       ├── types.ts             # VisualEvent, ServerMessage discriminated union
+│       ├── App.tsx              # Root: event state, global filters, backend orchestration
+│       ├── types.ts             # VisualEvent, ResourceInfo, ServerMessage discriminated union
 │       ├── components/
-│       │   ├── Sidebar.tsx      # Backend list, per-cluster namespace/resource filters
+│       │   ├── Sidebar.tsx      # Backend list + toggle, global namespace/resource tree filters
 │       │   ├── EventCanvas.tsx  # Positioned canvas for event cards
 │       │   └── EventCard.tsx    # Draggable card with fade animation and namespace badge
 │       └── hooks/
 │           ├── useBackendConnection.ts  # WS + REST per backend; handles all server message types
 │           └── useDrag.ts              # Drag logic for event cards
+├── scripts/
+│   ├── kind-dev-start.sh        # Start two-cluster kind dev environment
+│   ├── kind-dev-stop.sh         # Stop and clean up kind dev environment
+│   └── kind-dev-reload.sh       # Rebuild Go binary and restart backends (frontend HMR needs no restart)
 ├── helm/
 │   └── k8s-resource-visualizer/ # Helm chart
 │       ├── Chart.yaml
@@ -206,6 +215,30 @@ make dev-backend
 # Start frontend dev server (with hot reload, proxies to :8080)
 make dev-frontend
 ```
+
+### Two-cluster kind dev environment
+
+For testing multi-cluster and proxy features locally:
+
+```bash
+# Create two kind clusters, build the binary, start both backends and the Vite dev server
+make kind-dev-start
+# Open http://localhost:5173
+
+# After changing Go code: rebuild binary and restart backends
+# (frontend hot-reloads automatically via Vite HMR — no restart needed)
+make kind-dev-reload
+
+# Tear everything down
+make kind-dev-stop
+```
+
+`kind-dev-start` sets up:
+- `kind` cluster → backend-a on `:8080` (`CLUSTER_NAME=cluster-a`, proxies cluster-b)
+- `kind-b` cluster → backend-b on `:8081` (`CLUSTER_NAME=cluster-b`)
+- Vite dev server on `:5173` (proxies `/api`, `/ws`, and `/proxy/` to `:8080`)
+
+Logs are written to `/tmp/kind-backend-a.log`, `/tmp/kind-backend-b.log`, and `/tmp/kind-frontend.log`.
 
 ## Configuration
 
@@ -281,8 +314,8 @@ For local development, edit `frontend/public/config.json`:
 | Endpoint                          | Description                                              |
 |-----------------------------------|----------------------------------------------------------|
 | `GET /api/info`                   | Returns `{ "clusterName": "..." }`                       |
-| `GET /api/namespaces`             | Returns current list of watched namespace names          |
-| `GET /api/resources`              | Returns current list of watched resource types           |
+| `GET /api/namespaces`             | Returns current list of watched namespace names (`string[]`) |
+| `GET /api/resources`              | Returns current list of watched resources (`ResourceInfo[]` with group/version/resource/key) |
 | `GET /api/proxy-backends`         | Returns list of configured remote backends (name + color)|
 | `GET /ws`                         | WebSocket endpoint for event streaming                   |
 | `GET /proxy/{name}/ws`            | Proxied WebSocket to remote backend `name`               |
@@ -315,16 +348,20 @@ All messages are sent from the server to the client (one-way push). There are th
 
 ### `resources_updated` — watched resource types changed
 
-Sent when a CRD is added or removed, causing the backend to rediscover and update its watcher set.
+Sent when a CRD is added or removed, causing the backend to rediscover and update its watcher set. The payload is the **complete current list** of watched resources.
 
 ```json
 {
   "type": "resources_updated",
-  "data": ["deployments.apps", "pods", "widgets.example.com"]
+  "data": [
+    { "group": "apps",        "version": "v1", "resource": "deployments", "key": "deployments.apps" },
+    { "group": "",            "version": "v1", "resource": "pods",        "key": "pods" },
+    { "group": "example.com", "version": "v1", "resource": "widgets",     "key": "widgets.example.com" }
+  ]
 }
 ```
 
-The frontend updates the resource filter list for that cluster. New resource types are auto-selected if the user already has any resources selected; otherwise they appear unchecked.
+`key` matches `VisualEvent.resourceType` and is used for filter matching. The frontend recomputes the global resource list as the live union across all connected backends — resources disappear from the filter as soon as no backend reports them. New resource types are auto-selected if the user already has any resources selected; otherwise they appear unchecked.
 
 ### `namespaces_updated` — namespace list changed
 
@@ -337,7 +374,7 @@ Sent when a namespace is created or deleted.
 }
 ```
 
-The frontend updates the namespace filter list for that cluster. New namespaces are auto-selected if the user already has any real namespaces selected (not counting "Non-namespaced"); otherwise they appear unchecked.
+The frontend recomputes the global namespace list as the live union across all connected backends — namespaces disappear from the filter as soon as no backend reports them. New namespaces are auto-selected if the user already has any real namespaces selected (not counting "Non-namespaced"); otherwise they appear unchecked.
 
 ## Docker
 

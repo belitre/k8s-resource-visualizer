@@ -66,7 +66,7 @@ func (h *Hub) BroadcastEvent(ev k8s.VisualEvent) {
 }
 
 // BroadcastResourcesUpdated sends an updated resource list to all connected clients.
-func (h *Hub) BroadcastResourcesUpdated(resources []string) {
+func (h *Hub) BroadcastResourcesUpdated(resources []k8s.ResourceInfo) {
 	msg := ServerMessage{
 		Type: "resources_updated",
 		Data: resources,
