@@ -9,10 +9,52 @@ interface EventCardProps {
   onTimerRestart: (id: string) => void;
 }
 
-const actionColors: Record<string, string> = {
-  CREATED: "#22c55e",
-  UPDATED: "#eab308",
-  DELETED: "#ef4444",
+interface ActionTheme {
+  bg: string;
+  border: string;
+  label: string;      // action label + count badge bg
+  labelText: string;  // count badge text
+  text: string;       // primary text (name)
+  muted: string;      // secondary text (resourceType, timestamps)
+  nsBg: string;       // namespace badge background
+  nsBorder: string;
+  nsText: string;
+}
+
+const actionThemes: Record<string, ActionTheme> = {
+  CREATED: {
+    bg:        "#ccfbf1",
+    border:    "#5eead4",
+    label:     "#0f766e",
+    labelText: "#ffffff",
+    text:      "#134e4a",
+    muted:     "#0f766e",
+    nsBg:      "#99f6e4",
+    nsBorder:  "#5eead4",
+    nsText:    "#0f766e",
+  },
+  UPDATED: {
+    bg:        "#ede9fe",
+    border:    "#c4b5fd",
+    label:     "#5b21b6",
+    labelText: "#ffffff",
+    text:      "#3b0764",
+    muted:     "#6d28d9",
+    nsBg:      "#ddd6fe",
+    nsBorder:  "#c4b5fd",
+    nsText:    "#5b21b6",
+  },
+  DELETED: {
+    bg:        "#ffe4e6",
+    border:    "#fda4af",
+    label:     "#9f1239",
+    labelText: "#ffffff",
+    text:      "#881337",
+    muted:     "#be123c",
+    nsBg:      "#fecdd3",
+    nsBorder:  "#fda4af",
+    nsText:    "#9f1239",
+  },
 };
 
 function formatTime(ms: number): string {
@@ -41,7 +83,8 @@ export function EventCard({ event, clusterColor, onPositionChange, onTimerRestar
     }
   }, [event.expiresAt]);
 
-  const actionColor = actionColors[event.action] ?? "#94a3b8";
+
+  const theme = actionThemes[event.action] ?? actionThemes.DELETED;
   const remainingS = Math.max(0, (event.expiresAt - Date.now()) / 1000);
 
   return (
@@ -60,9 +103,10 @@ export function EventCard({ event, clusterColor, onPositionChange, onTimerRestar
       <div
         key={animKey}
         style={{
-          background: "#1a1c2a",
+          background: theme.bg,
+          border: `1.5px solid ${theme.border}`,
           borderRadius: "6px",
-          boxShadow: "0 2px 12px rgba(0,0,0,0.4)",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.15)",
           minWidth: "200px",
           maxWidth: "300px",
           fontSize: "13px",
@@ -85,29 +129,29 @@ export function EventCard({ event, clusterColor, onPositionChange, onTimerRestar
           {event.cluster}
         </div>
 
-        {/* Card body wrapped in action-color border */}
-        <div style={{ border: `2px solid ${actionColor}`, borderTop: "none", borderRadius: "0 0 6px 6px", padding: "10px 14px" }}>
+        {/* Card body */}
+        <div style={{ padding: "10px 14px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
-            <span style={{ fontWeight: 700, color: actionColor, textTransform: "uppercase", fontSize: "11px", letterSpacing: "0.5px" }}>
+            <span style={{ fontWeight: 700, color: theme.label, textTransform: "uppercase", fontSize: "11px", letterSpacing: "0.5px" }}>
               {event.action}
             </span>
             {event.count > 1 && (
-              <span style={{ background: actionColor, borderRadius: "10px", padding: "1px 6px", fontSize: "11px", color: "#0f1117", fontWeight: 700 }}>
+              <span style={{ background: theme.label, borderRadius: "10px", padding: "1px 6px", fontSize: "11px", color: theme.labelText, fontWeight: 700 }}>
                 ×{event.count}
               </span>
             )}
           </div>
-          <div style={{ fontWeight: 600, marginBottom: "6px", color: "#e2e8f0" }}>{event.name}</div>
+          <div style={{ fontWeight: 600, marginBottom: "6px", color: theme.text }}>{event.name}</div>
           <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px", flexWrap: "wrap" }}>
-            <span style={{ color: "#7c8497", fontSize: "12px" }}>{event.resourceType}</span>
+            <span style={{ color: theme.muted, fontSize: "12px" }}>{event.resourceType}</span>
             {event.namespace && (
               <span style={{
-                background: "#2a2d3e",
-                border: "1px solid #3d4263",
+                background: theme.nsBg,
+                border: `1px solid ${theme.nsBorder}`,
                 borderRadius: "4px",
                 padding: "1px 7px",
                 fontSize: "11px",
-                color: "#a5b4fc",
+                color: theme.nsText,
                 fontWeight: 600,
                 letterSpacing: "0.2px",
               }}>
@@ -115,7 +159,7 @@ export function EventCard({ event, clusterColor, onPositionChange, onTimerRestar
               </span>
             )}
           </div>
-          <div style={{ color: "#4a5068", fontSize: "11px", lineHeight: "1.6" }}>
+          <div style={{ color: theme.muted, fontSize: "11px", lineHeight: "1.6", opacity: 0.8 }}>
             <div>created: {formatTime(event.createdAt)}</div>
             {event.count > 1 && <div>refreshed: {formatTime(event.refreshedAt)}</div>}
           </div>
