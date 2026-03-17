@@ -1,4 +1,4 @@
-.PHONY: all build build-backend build-frontend test test-backend test-frontend lint lint-backend lint-frontend clean dev dev-backend dev-frontend docker-login docker-build docker-push docker-build-push install-semantic-release release release-dry-run frontend-dist-placeholder ci-frontend helm-lint helm-validate helm-login helm-package helm-push
+.PHONY: all build build-backend build-frontend test test-backend test-frontend lint lint-backend lint-frontend clean dev dev-backend dev-frontend kind-dev-start kind-dev-stop kind-dev-reload kind-test-resources docker-login docker-build docker-push docker-build-push install-semantic-release release release-dry-run frontend-dist-placeholder ci-frontend helm-lint helm-validate helm-login helm-package helm-push
 
 IMAGE ?= ghcr.io/belitre/k8s-resource-visualizer
 VERSION ?= latest
@@ -97,6 +97,18 @@ dev:
 	@echo "Run these in two terminals:"
 	@echo "  make dev-backend    # Go backend on :8080"
 	@echo "  make dev-frontend   # Vite dev server on :5173 (proxies to :8080)"
+
+kind-dev-start:
+	@bash scripts/kind-dev-start.sh
+
+kind-dev-stop:
+	@bash scripts/kind-dev-stop.sh
+
+kind-dev-reload:
+	@bash scripts/kind-dev-reload.sh
+
+kind-test-resources:
+	@bash scripts/test-resources.sh $(DELAY)
 
 # ── Docker ───────────────────────────────────────────────────────────────────
 

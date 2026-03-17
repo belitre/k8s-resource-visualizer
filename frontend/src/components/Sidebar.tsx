@@ -1,26 +1,29 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ResourceInfo } from "../types";
 
 interface BackendInfo {
   url: string;
   clusterName: string;
-  namespaces: string[];
-  resources: string[];
   status: string;
-  removable: boolean;
-  selectedNamespaces: Set<string>;
-  selectedResources: Set<string>;
+  enabled: boolean;
+  color?: string;
 }
 
 interface SidebarProps {
   backends: BackendInfo[];
   duration: number;
   onDurationChange: (d: number) => void;
-  onAddBackend: (url: string) => void;
-  onRemoveBackend: (url: string) => void;
-  onToggleClusterNamespace: (clusterName: string, ns: string) => void;
-  onToggleAllClusterNamespaces: (clusterName: string, namespaces: string[], selected: boolean) => void;
-  onToggleClusterResource: (clusterName: string, rt: string) => void;
-  onToggleAllClusterResources: (clusterName: string, resources: string[], selected: boolean) => void;
+  onToggleBackend: (url: string) => void;
+  namespaces: string[];
+  selectedNamespaces: Set<string>;
+  onToggleNamespace: (ns: string) => void;
+  onToggleAllNamespaces: (namespaces: string[], selected: boolean) => void;
+  resources: ResourceInfo[];
+  selectedResources: Set<string>;
+  onToggleResource: (rt: string) => void;
+  onToggleAllResources: (resources: string[], selected: boolean) => void;
+  nameFilter: string;
+  onNameFilterChange: (value: string) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -115,64 +118,189 @@ function CheckboxFilter({
   );
 }
 
-function BackendItem({
-  backend,
-  expanded,
-  onToggleExpand,
-  onRemove,
-  onToggleNamespace,
-  onToggleAllNamespaces,
-  onToggleResource,
-  onToggleAllResources,
-}: {
+function BackendItem({ backend, onToggle }: {
   backend: BackendInfo;
-  expanded: boolean;
-  onToggleExpand: () => void;
-  onRemove: () => void;
-  onToggleNamespace: (ns: string) => void;
-  onToggleAllNamespaces: (ns: string[], selected: boolean) => void;
-  onToggleResource: (rt: string) => void;
-  onToggleAllResources: (rt: string[], selected: boolean) => void;
+  onToggle: () => void;
 }) {
-  const ns = ["", ...backend.namespaces.slice().sort()];
-  const res = backend.resources.slice().sort();
-  const nsLabel = (item: string) => item === "" ? "Non-namespaced" : item;
+  return (
+    <div style={{ borderTop: "1px solid #1e2030", padding: "8px 16px", display: "flex", alignItems: "center", gap: "8px" }}>
+      <input
+        type="checkbox"
+        checked={backend.enabled}
+        onChange={onToggle}
+        title={backend.enabled ? "Disable events from this backend" : "Enable events from this backend"}
+      />
+      <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusColors[backend.status] ?? "#94a3b8", display: "inline-block", flexShrink: 0 }} />
+      {backend.color && (
+        <span style={{ width: "10px", height: "10px", borderRadius: "2px", background: backend.color, display: "inline-block", flexShrink: 0 }} />
+      )}
+      <span style={{ flex: 1, fontSize: "13px", color: "#c8cdd8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {backend.clusterName || backend.url}
+      </span>
+    </div>
+  );
+}
+
+function TriCheckbox({
+  allSelected,
+  someSelected,
+  onChange,
+  style,
+}: {
+  allSelected: boolean;
+  someSelected: boolean;
+  onChange: (checked: boolean) => void;
+  style?: React.CSSProperties;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = someSelected && !allSelected;
+  }, [someSelected, allSelected]);
+  return (
+    <input
+      type="checkbox"
+      ref={ref}
+      checked={allSelected}
+      onChange={(e) => onChange(e.target.checked)}
+      style={style}
+    />
+  );
+}
+
+function ResourceTree({
+  resources,
+  selected,
+  onToggle,
+  onToggleAll,
+  filter,
+}: {
+  resources: ResourceInfo[];
+  selected: Set<string>;
+  onToggle: (key: string) => void;
+  onToggleAll: (keys: string[], checked: boolean) => void;
+  filter: string;
+}) {
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
+  const [openVersions, setOpenVersions] = useState<Set<string>>(new Set());
+
+  // When filter is active, treat all nodes as open
+  const isGroupOpen = (group: string) => filter ? true : openGroups.has(group);
+  const isVersionOpen = (versionKey: string) => filter ? true : openVersions.has(versionKey);
+
+  const lc = filter.toLowerCase();
+
+  // Build tree: group → version → ResourceInfo[]
+  // Apply filter: a resource matches if group, version, or resource name contains the filter
+  const tree = new Map<string, Map<string, ResourceInfo[]>>();
+  for (const r of resources) {
+    const matches =
+      !filter ||
+      r.group.toLowerCase().includes(lc) ||
+      r.version.toLowerCase().includes(lc) ||
+      r.resource.toLowerCase().includes(lc);
+    if (!matches) continue;
+    if (!tree.has(r.group)) tree.set(r.group, new Map());
+    const vMap = tree.get(r.group)!;
+    if (!vMap.has(r.version)) vMap.set(r.version, []);
+    vMap.get(r.version)!.push(r);
+  }
+
+  const sortedGroups = Array.from(tree.keys()).sort();
+
+  // Collect all visible keys for "select all"
+  const allVisibleKeys = sortedGroups.flatMap((g) =>
+    Array.from(tree.get(g)!.values()).flatMap((rs) => rs.map((r) => r.key))
+  );
+  const allVisibleSelected = allVisibleKeys.length > 0 && allVisibleKeys.every((k) => selected.has(k));
+  const someVisibleSelected = allVisibleKeys.some((k) => selected.has(k));
+
+  const toggleGroup = (group: string) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group); else next.add(group);
+      return next;
+    });
+  };
+
+  const toggleVersion = (versionKey: string) => {
+    setOpenVersions((prev) => {
+      const next = new Set(prev);
+      if (next.has(versionKey)) next.delete(versionKey); else next.add(versionKey);
+      return next;
+    });
+  };
+
+  const labelStyle: React.CSSProperties = { display: "flex", alignItems: "center", gap: "6px", padding: "2px 0", cursor: "pointer", fontSize: "12px" };
 
   return (
-    <div style={{ borderTop: "1px solid #1e2030" }}>
-      <div style={{ padding: "8px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <button
-          onClick={onToggleExpand}
-          style={{ flex: 1, display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", background: "none", border: "none", cursor: "pointer", color: "#c8cdd8", fontFamily: "system-ui, sans-serif", textAlign: "left", padding: 0 }}
-        >
-          <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusColors[backend.status] ?? "#94a3b8", display: "inline-block", flexShrink: 0 }} />
-          <span style={{ flex: 1 }}>{backend.clusterName || backend.url}</span>
-          <span style={{ fontSize: "10px", color: "#64748b" }}>{expanded ? "▲" : "▼"}</span>
-        </button>
-        {backend.removable && (
-          <button
-            onClick={onRemove}
-            style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: "18px", lineHeight: 1, marginLeft: "8px" }}
-            title="Remove backend"
-          >
-            &times;
-          </button>
-        )}
-      </div>
-      {expanded && (
-        <div style={{ padding: "0 16px 12px", borderTop: "1px solid #1a1c2a" }}>
-          <div style={{ marginTop: "10px" }}>
-            <div style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: "6px" }}>Namespaces</div>
-            <CheckboxFilter items={ns} selected={backend.selectedNamespaces} onToggle={onToggleNamespace} onToggleAll={onToggleAllNamespaces} filterPlaceholder="Filter…" fontSize="12px" getLabel={nsLabel} />
-          </div>
-          {res.length > 0 && (
-            <div style={{ marginTop: "10px" }}>
-              <div style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.4px", marginBottom: "6px" }}>Resource Types</div>
-              <CheckboxFilter items={res} selected={backend.selectedResources} onToggle={onToggleResource} onToggleAll={onToggleAllResources} filterPlaceholder="Filter…" fontSize="12px" />
+    <div style={{ padding: "0 16px 8px" }}>
+      <label style={{ ...labelStyle, fontWeight: 600, borderBottom: "1px solid #1e2030", paddingBottom: "6px", marginBottom: "4px" }}>
+        <TriCheckbox allSelected={allVisibleSelected} someSelected={someVisibleSelected} onChange={(checked) => onToggleAll(allVisibleKeys, checked)} />
+        Select all{filter ? ` (${allVisibleKeys.length})` : ""}
+      </label>
+
+      {sortedGroups.map((group) => {
+        const vMap = tree.get(group)!;
+        const sortedVersions = Array.from(vMap.keys()).sort();
+        const groupKeys = sortedVersions.flatMap((v) => vMap.get(v)!.map((r) => r.key));
+        const groupAllSelected = groupKeys.every((k) => selected.has(k));
+        const groupSomeSelected = groupKeys.some((k) => selected.has(k));
+        const groupOpen = isGroupOpen(group);
+
+        return (
+          <div key={group}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "2px 0" }}>
+              <TriCheckbox
+                allSelected={groupAllSelected}
+                someSelected={groupSomeSelected}
+                onChange={(checked) => onToggleAll(groupKeys, checked)}
+              />
+              <button
+                onClick={() => toggleGroup(group)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#c8cdd8", fontSize: "12px", fontWeight: 600, padding: 0, display: "flex", alignItems: "center", gap: "4px" }}
+              >
+                <span style={{ fontSize: "9px", color: "#64748b" }}>{groupOpen ? "▼" : "▶"}</span>
+                {group || '""'}
+              </button>
             </div>
-          )}
-        </div>
-      )}
+
+            {groupOpen && sortedVersions.map((version) => {
+              const versionKey = `${group}/${version}`;
+              const vResources = vMap.get(version)!;
+              const vKeys = vResources.map((r) => r.key);
+              const vAllSelected = vKeys.every((k) => selected.has(k));
+              const vSomeSelected = vKeys.some((k) => selected.has(k));
+              const vOpen = isVersionOpen(versionKey);
+
+              return (
+                <div key={version} style={{ paddingLeft: "20px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "2px 0" }}>
+                    <TriCheckbox
+                      allSelected={vAllSelected}
+                      someSelected={vSomeSelected}
+                      onChange={(checked) => onToggleAll(vKeys, checked)}
+                    />
+                    <button
+                      onClick={() => toggleVersion(versionKey)}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: "11px", padding: 0, display: "flex", alignItems: "center", gap: "4px" }}
+                    >
+                      <span style={{ fontSize: "9px", color: "#64748b" }}>{vOpen ? "▼" : "▶"}</span>
+                      {version || '""'}
+                    </button>
+                  </div>
+
+                  {vOpen && vResources.map((r) => (
+                    <label key={r.key} style={{ ...labelStyle, paddingLeft: "20px" }}>
+                      <input type="checkbox" checked={selected.has(r.key)} onChange={() => onToggle(r.key)} />
+                      {r.resource || '""'}
+                    </label>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -181,35 +309,26 @@ export function Sidebar({
   backends,
   duration,
   onDurationChange,
-  onAddBackend,
-  onRemoveBackend,
-  onToggleClusterNamespace,
-  onToggleAllClusterNamespaces,
-  onToggleClusterResource,
-  onToggleAllClusterResources,
+  onToggleBackend,
+  namespaces,
+  selectedNamespaces,
+  onToggleNamespace,
+  onToggleAllNamespaces,
+  resources,
+  selectedResources,
+  onToggleResource,
+  onToggleAllResources,
+  nameFilter,
+  onNameFilterChange,
   collapsed,
   onToggleCollapse,
 }: SidebarProps) {
-  const [newUrl, setNewUrl] = useState("");
   const [backendsOpen, setBackendsOpen] = useState(true);
-  const [expandedBackends, setExpandedBackends] = useState<Set<string>>(new Set());
+  const [namespacesOpen, setNamespacesOpen] = useState(true);
+  const [resourcesOpen, setResourcesOpen] = useState(true);
+  const [resourceFilter, setResourceFilter] = useState("");
 
-  const handleAdd = () => {
-    const url = newUrl.trim();
-    if (url) {
-      onAddBackend(url);
-      setNewUrl("");
-    }
-  };
-
-  const toggleBackendExpanded = (url: string) => {
-    setExpandedBackends((prev) => {
-      const next = new Set(prev);
-      if (next.has(url)) next.delete(url);
-      else next.add(url);
-      return next;
-    });
-  };
+  const nsLabel = (item: string) => item === "" ? "Non-namespaced" : item;
 
   if (collapsed) {
     return (
@@ -244,23 +363,18 @@ export function Sidebar({
       </div>
 
       <div style={{ padding: "16px", borderBottom: "1px solid #1e2030" }}>
-        <label style={{ fontWeight: 600, display: "block", marginBottom: "8px" }}>Add Backend</label>
-        <div style={{ display: "flex", gap: "6px" }}>
-          <input
-            type="text"
-            placeholder="http://backend-url:8080"
-            value={newUrl}
-            onChange={(e) => setNewUrl(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-            style={{ flex: 1, padding: "6px 10px", border: "1px solid #2a2d3d", borderRadius: "4px", fontSize: "13px", background: "#1a1c2a", color: "#c8cdd8" }}
-          />
-          <button onClick={handleAdd} style={{ padding: "6px 12px", background: "#3b82f6", color: "white", border: "none", borderRadius: "4px", cursor: "pointer", fontSize: "13px" }}>
-            Add
-          </button>
-        </div>
+        <label style={{ fontWeight: 600, display: "block", marginBottom: "8px" }}>Filter by Name</label>
+        <input
+          type="text"
+          placeholder="e.g. my-deployment"
+          value={nameFilter}
+          onChange={(e) => onNameFilterChange(e.target.value)}
+          style={{ ...inputStyle, marginBottom: 0 }}
+        />
       </div>
 
       <div style={{ flex: 1, overflow: "auto" }}>
+        {/* Backends */}
         <div style={{ borderBottom: "1px solid #1e2030" }}>
           <SectionHeader label={`Backends${backends.length > 0 ? ` (${backends.length})` : ""}`} open={backendsOpen} onToggle={() => setBackendsOpen((o) => !o)} />
           {backendsOpen && backends.length === 0 && (
@@ -270,17 +384,51 @@ export function Sidebar({
             <BackendItem
               key={backend.url}
               backend={backend}
-              expanded={expandedBackends.has(backend.url)}
-              onToggleExpand={() => toggleBackendExpanded(backend.url)}
-              onRemove={() => onRemoveBackend(backend.url)}
-              onToggleNamespace={(ns) => onToggleClusterNamespace(backend.clusterName, ns)}
-              onToggleAllNamespaces={(ns, sel) => onToggleAllClusterNamespaces(backend.clusterName, ns, sel)}
-              onToggleResource={(rt) => onToggleClusterResource(backend.clusterName, rt)}
-              onToggleAllResources={(rt, sel) => onToggleAllClusterResources(backend.clusterName, rt, sel)}
+              onToggle={() => onToggleBackend(backend.url)}
             />
           ))}
         </div>
 
+        {/* Namespaces */}
+        <div style={{ borderBottom: "1px solid #1e2030" }}>
+          <SectionHeader label="Namespaces" open={namespacesOpen} onToggle={() => setNamespacesOpen((o) => !o)} />
+          {namespacesOpen && (
+            <CheckboxFilter
+              items={namespaces}
+              selected={selectedNamespaces}
+              onToggle={onToggleNamespace}
+              onToggleAll={onToggleAllNamespaces}
+              filterPlaceholder="Filter namespaces…"
+              fontSize="12px"
+              getLabel={nsLabel}
+            />
+          )}
+        </div>
+
+        {/* Resource Types */}
+        <div style={{ borderBottom: "1px solid #1e2030" }}>
+          <SectionHeader label="Resource Types" open={resourcesOpen} onToggle={() => setResourcesOpen((o) => !o)} />
+          {resourcesOpen && (
+            <div style={{ padding: "0 16px 4px" }}>
+              <input
+                type="text"
+                placeholder="Filter resource types…"
+                value={resourceFilter}
+                onChange={(e) => setResourceFilter(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+          )}
+          {resourcesOpen && (
+            <ResourceTree
+              resources={resources}
+              selected={selectedResources}
+              onToggle={onToggleResource}
+              onToggleAll={onToggleAllResources}
+              filter={resourceFilter}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

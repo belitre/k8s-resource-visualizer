@@ -1,18 +1,29 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { Sidebar } from "./Sidebar";
+import type { ResourceInfo } from "../types";
+
+function makeResource(group: string, version: string, resource: string): ResourceInfo {
+  const key = group ? `${resource}.${group}` : resource;
+  return { group, version, resource, key };
+}
 
 function renderSidebar(overrides = {}) {
   const defaults = {
     backends: [],
     duration: 10,
     onDurationChange: vi.fn(),
-    onAddBackend: vi.fn(),
-    onRemoveBackend: vi.fn(),
-    onToggleClusterNamespace: vi.fn(),
-    onToggleAllClusterNamespaces: vi.fn(),
-    onToggleClusterResource: vi.fn(),
-    onToggleAllClusterResources: vi.fn(),
+    onToggleBackend: vi.fn(),
+    namespaces: [],
+    selectedNamespaces: new Set<string>(),
+    onToggleNamespace: vi.fn(),
+    onToggleAllNamespaces: vi.fn(),
+    resources: [] as ResourceInfo[],
+    selectedResources: new Set<string>(),
+    onToggleResource: vi.fn(),
+    onToggleAllResources: vi.fn(),
+    nameFilter: "",
+    onNameFilterChange: vi.fn(),
     collapsed: false,
     onToggleCollapse: vi.fn(),
   };
@@ -24,12 +35,8 @@ function makeBackend(overrides = {}) {
   return {
     url: "http://localhost:8080",
     clusterName: "prod",
-    namespaces: ["default", "kube-system"],
-    resources: ["deployments.apps", "pods"],
     status: "connected",
-    removable: true,
-    selectedNamespaces: new Set(["", "default", "kube-system"]),
-    selectedResources: new Set(["deployments.apps", "pods"]),
+    enabled: true,
     ...overrides,
   };
 }
@@ -43,223 +50,248 @@ describe("Sidebar", () => {
 
   it("shows no-backends message when empty", () => {
     renderSidebar();
-    expect(
-      screen.getByText(/No backends connected/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/No backends connected/)).toBeInTheDocument();
   });
 
-  it("calls onAddBackend when adding a URL", () => {
-    const { props } = renderSidebar();
-
-    const input = screen.getByPlaceholderText("http://backend-url:8080");
-    fireEvent.change(input, { target: { value: "http://localhost:8080" } });
-    fireEvent.click(screen.getByText("Add"));
-
-    expect(props.onAddBackend).toHaveBeenCalledWith("http://localhost:8080");
-  });
-
-  it("calls onAddBackend on Enter key", () => {
-    const { props } = renderSidebar();
-
-    const input = screen.getByPlaceholderText("http://backend-url:8080");
-    fireEvent.change(input, { target: { value: "http://localhost:8080" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    expect(props.onAddBackend).toHaveBeenCalledWith("http://localhost:8080");
-  });
-
-  it("does not add empty URL", () => {
-    const { props } = renderSidebar();
-    fireEvent.click(screen.getByText("Add"));
-    expect(props.onAddBackend).not.toHaveBeenCalled();
-  });
-
-  it("renders backend with cluster name", () => {
-    const backend = makeBackend({ clusterName: "prod-cluster" });
-    renderSidebar({ backends: [backend] });
-
+  it("renders backend with cluster name and status dot", () => {
+    renderSidebar({ backends: [makeBackend({ clusterName: "prod-cluster" })] });
     expect(screen.getByText("prod-cluster")).toBeInTheDocument();
   });
 
-  it("shows namespace filter when backend is expanded", () => {
+  it("calls onToggleBackend when clicking backend enable checkbox", () => {
     const backend = makeBackend();
+    const { props } = renderSidebar({ backends: [backend] });
+    const checkbox = screen.getAllByRole("checkbox").find((cb) =>
+      cb.getAttribute("title")?.includes("Disable events")
+    )!;
+    fireEvent.click(checkbox);
+    expect(props.onToggleBackend).toHaveBeenCalledWith("http://localhost:8080");
+  });
+
+  it("backend checkbox is unchecked when disabled", () => {
+    const backend = makeBackend({ enabled: false });
     renderSidebar({ backends: [backend] });
+    const checkbox = screen.getAllByRole("checkbox").find((cb) =>
+      cb.getAttribute("title")?.includes("Enable events")
+    )!;
+    expect(checkbox).not.toBeChecked();
+  });
 
-    fireEvent.click(screen.getByText("prod"));
+  it("collapses and expands backends list", () => {
+    renderSidebar({ backends: [makeBackend()] });
+    expect(screen.getByText("prod")).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/Backends/));
+    expect(screen.queryByText("prod")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText(/Backends/));
+    expect(screen.getByText("prod")).toBeInTheDocument();
+  });
 
+  it("updates duration when slider changes", () => {
+    const { props } = renderSidebar();
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "30" } });
+    expect(props.onDurationChange).toHaveBeenCalledWith(30);
+  });
+
+  it("renders global namespaces section", () => {
+    renderSidebar({
+      namespaces: ["", "default", "kube-system"],
+      selectedNamespaces: new Set(["", "default", "kube-system"]),
+    });
     expect(screen.getByText("Namespaces")).toBeInTheDocument();
     expect(screen.getByText("Non-namespaced")).toBeInTheDocument();
     expect(screen.getByText("default")).toBeInTheDocument();
     expect(screen.getByText("kube-system")).toBeInTheDocument();
   });
 
-  it("shows resource type filter when backend is expanded", () => {
-    const backend = makeBackend();
-    renderSidebar({ backends: [backend] });
-
-    fireEvent.click(screen.getByText("prod"));
-
-    expect(screen.getByText("Resource Types")).toBeInTheDocument();
-    expect(screen.getByText("deployments.apps")).toBeInTheDocument();
-    expect(screen.getByText("pods")).toBeInTheDocument();
-  });
-
-  it("calls onToggleClusterNamespace when clicking a namespace checkbox", () => {
-    const backend = makeBackend({ namespaces: ["default"], selectedNamespaces: new Set<string>() });
-    const { props } = renderSidebar({ backends: [backend] });
-
-    fireEvent.click(screen.getByText("prod"));
-
-    const checkboxes = screen.getAllByRole("checkbox");
-    const nsCheckbox = checkboxes.find((cb) => {
-      const label = cb.closest("label");
-      return label?.textContent?.includes("default");
-    })!;
-    fireEvent.click(nsCheckbox);
-
-    expect(props.onToggleClusterNamespace).toHaveBeenCalledWith("prod", "default");
-  });
-
-  it("calls onToggleClusterResource when clicking a resource checkbox", () => {
-    const backend = makeBackend({ namespaces: [], resources: ["pods"], selectedResources: new Set<string>() });
-    const { props } = renderSidebar({ backends: [backend] });
-
-    fireEvent.click(screen.getByText("prod"));
-
-    const checkboxes = screen.getAllByRole("checkbox");
-    const resCheckbox = checkboxes.find((cb) => {
-      const label = cb.closest("label");
-      return label?.textContent?.includes("pods");
-    })!;
-    fireEvent.click(resCheckbox);
-
-    expect(props.onToggleClusterResource).toHaveBeenCalledWith("prod", "pods");
-  });
-
-  it("calls onRemoveBackend when clicking remove button", () => {
-    const backend = makeBackend({ namespaces: [], resources: [] });
-    const { props } = renderSidebar({ backends: [backend] });
-
-    fireEvent.click(screen.getByTitle("Remove backend"));
-
-    expect(props.onRemoveBackend).toHaveBeenCalledWith("http://localhost:8080");
-  });
-
-  it("does not show remove button for non-removable backends", () => {
-    const backend = makeBackend({ namespaces: [], resources: [], removable: false });
-    renderSidebar({ backends: [backend] });
-
-    expect(screen.queryByTitle("Remove backend")).not.toBeInTheDocument();
-  });
-
-  it("updates duration when slider changes", () => {
-    const { props } = renderSidebar();
-
-    const slider = screen.getByRole("slider");
-    fireEvent.change(slider, { target: { value: "30" } });
-
-    expect(props.onDurationChange).toHaveBeenCalledWith(30);
-  });
-
-  it("calls onToggleAllClusterNamespaces for select all", () => {
-    const backend = makeBackend({ selectedNamespaces: new Set<string>() });
-    const { props } = renderSidebar({ backends: [backend] });
-
-    fireEvent.click(screen.getByText("prod"));
-
-    const selectAlls = screen.getAllByText("Select all");
-    const nsSelectAll = selectAlls[0].closest("label")!.querySelector("input")!;
-    fireEvent.click(nsSelectAll);
-
-    expect(props.onToggleAllClusterNamespaces).toHaveBeenCalledWith(
-      "prod",
-      ["", "default", "kube-system"],
-      true
-    );
-  });
-
-  it("calls onToggleClusterNamespace for non-namespaced checkbox", () => {
-    const backend = makeBackend({ selectedNamespaces: new Set(["", "default", "kube-system"]) });
-    const { props } = renderSidebar({ backends: [backend] });
-
-    fireEvent.click(screen.getByText("prod"));
-
-    const nonNsCheckbox = screen.getAllByRole("checkbox").find((cb) => {
-      const label = cb.closest("label");
-      return label?.textContent?.includes("Non-namespaced");
-    })!;
-    fireEvent.click(nonNsCheckbox);
-
-    expect(props.onToggleClusterNamespace).toHaveBeenCalledWith("prod", "");
-  });
-
-  it("calls onToggleAllClusterResources for select all", () => {
-    const backend = makeBackend({ selectedResources: new Set<string>() });
-    const { props } = renderSidebar({ backends: [backend] });
-
-    fireEvent.click(screen.getByText("prod"));
-
-    const selectAlls = screen.getAllByText("Select all");
-    const resSelectAll = selectAlls[1].closest("label")!.querySelector("input")!;
-    fireEvent.click(resSelectAll);
-
-    expect(props.onToggleAllClusterResources).toHaveBeenCalledWith(
-      "prod",
-      ["deployments.apps", "pods"],
-      true
-    );
-  });
-
-  it("filters namespaces by search text when backend is expanded", () => {
-    const backend = makeBackend({
-      namespaces: ["default", "kube-system", "monitoring"],
-      selectedNamespaces: new Set(["default", "kube-system", "monitoring"]),
+  it("calls onToggleNamespace when clicking a namespace checkbox", () => {
+    const { props } = renderSidebar({
+      namespaces: ["", "default"],
+      selectedNamespaces: new Set<string>(),
     });
-    renderSidebar({ backends: [backend] });
+    const checkbox = screen.getAllByRole("checkbox").find((cb) =>
+      cb.closest("label")?.textContent?.includes("default")
+    )!;
+    fireEvent.click(checkbox);
+    expect(props.onToggleNamespace).toHaveBeenCalledWith("default");
+  });
 
-    fireEvent.click(screen.getByText("prod"));
+  it("calls onToggleNamespace for non-namespaced checkbox", () => {
+    const { props } = renderSidebar({
+      namespaces: ["", "default"],
+      selectedNamespaces: new Set(["", "default"]),
+    });
+    const checkbox = screen.getAllByRole("checkbox").find((cb) =>
+      cb.closest("label")?.textContent?.includes("Non-namespaced")
+    )!;
+    fireEvent.click(checkbox);
+    expect(props.onToggleNamespace).toHaveBeenCalledWith("");
+  });
 
-    const nsInputs = screen.getAllByPlaceholderText("Filter…");
-    fireEvent.change(nsInputs[0], { target: { value: "kube" } });
+  it("calls onToggleAllNamespaces for select all in namespaces", () => {
+    const { props } = renderSidebar({
+      namespaces: ["", "default", "kube-system"],
+      selectedNamespaces: new Set<string>(),
+    });
+    const nsSelectAll = screen.getAllByText("Select all")[0].closest("label")!.querySelector("input")!;
+    fireEvent.click(nsSelectAll);
+    expect(props.onToggleAllNamespaces).toHaveBeenCalledWith(["", "default", "kube-system"], true);
+  });
 
+  it("renders Resource Types section header", () => {
+    renderSidebar({
+      resources: [makeResource("apps", "v1", "deployments")],
+      selectedResources: new Set(["deployments.apps"]),
+    });
+    expect(screen.getByText("Resource Types")).toBeInTheDocument();
+  });
+
+  it("shows group when expanded", () => {
+    renderSidebar({
+      resources: [makeResource("apps", "v1", "deployments")],
+      selectedResources: new Set(["deployments.apps"]),
+    });
+    expect(screen.getByText("apps")).toBeInTheDocument();
+  });
+
+  it("shows resource after expanding group and version", () => {
+    renderSidebar({
+      resources: [makeResource("apps", "v1", "deployments")],
+      selectedResources: new Set(["deployments.apps"]),
+    });
+    // Click group to expand
+    fireEvent.click(screen.getByText("apps"));
+    // Click version to expand
+    fireEvent.click(screen.getByText("v1"));
+    expect(screen.getByText("deployments")).toBeInTheDocument();
+  });
+
+  it("calls onToggleResource when clicking a resource checkbox", () => {
+    const { props } = renderSidebar({
+      resources: [makeResource("apps", "v1", "deployments")],
+      selectedResources: new Set<string>(),
+    });
+    // Expand group and version via filter (auto-expands)
+    fireEvent.change(screen.getByPlaceholderText("Filter resource types…"), { target: { value: "deploy" } });
+    const checkbox = screen.getAllByRole("checkbox").find((cb) =>
+      cb.closest("label")?.textContent?.includes("deployments")
+    )!;
+    fireEvent.click(checkbox);
+    expect(props.onToggleResource).toHaveBeenCalledWith("deployments.apps");
+  });
+
+  it("calls onToggleAllResources for select all", () => {
+    const { props } = renderSidebar({
+      resources: [makeResource("apps", "v1", "deployments"), makeResource("", "v1", "pods")],
+      selectedResources: new Set<string>(),
+    });
+    const selectAllLabel = screen.getAllByText(/Select all/)[1].closest("label")!.querySelector("input")!;
+    fireEvent.click(selectAllLabel);
+    expect(props.onToggleAllResources).toHaveBeenCalledWith(
+      expect.arrayContaining(["deployments.apps", "pods"]),
+      true
+    );
+  });
+
+  it("filters resource types by search text and auto-expands", () => {
+    renderSidebar({
+      resources: [
+        makeResource("apps", "v1", "deployments"),
+        makeResource("", "v1", "pods"),
+        makeResource("", "v1", "services"),
+      ],
+      selectedResources: new Set(["deployments.apps", "pods", "services"]),
+    });
+    fireEvent.change(screen.getByPlaceholderText("Filter resource types…"), { target: { value: "deploy" } });
+    expect(screen.getByText("deployments")).toBeInTheDocument();
+    expect(screen.queryByText("pods")).not.toBeInTheDocument();
+    expect(screen.queryByText("services")).not.toBeInTheDocument();
+  });
+
+  it("select all with resource filter only toggles filtered items", () => {
+    const { props } = renderSidebar({
+      resources: [
+        makeResource("apps", "v1", "deployments"),
+        makeResource("", "v1", "pods"),
+      ],
+      selectedResources: new Set<string>(),
+    });
+    fireEvent.change(screen.getByPlaceholderText("Filter resource types…"), { target: { value: "deploy" } });
+    const selectAllLabel = screen.getAllByText(/Select all/)[1].closest("label")!.querySelector("input")!;
+    fireEvent.click(selectAllLabel);
+    expect(props.onToggleAllResources).toHaveBeenCalledWith(["deployments.apps"], true);
+  });
+
+  it("group tristate checkbox selects all resources in group", () => {
+    const { props } = renderSidebar({
+      resources: [
+        makeResource("apps", "v1", "deployments"),
+        makeResource("apps", "v1", "replicasets"),
+      ],
+      selectedResources: new Set<string>(),
+    });
+    // Use filter to auto-expand
+    fireEvent.change(screen.getByPlaceholderText("Filter resource types…"), { target: { value: "apps" } });
+    // Find group-level tristate checkbox (first checkbox after "Select all")
+    const groupCheckboxes = screen.getAllByRole("checkbox").filter((cb) => !cb.closest("label"));
+    // The group checkbox is not inside a label — it's in a div
+    fireEvent.click(groupCheckboxes[0]);
+    expect(props.onToggleAllResources).toHaveBeenCalledWith(
+      expect.arrayContaining(["deployments.apps", "replicasets.apps"]),
+      true
+    );
+  });
+
+  it("filters namespaces by search text", () => {
+    renderSidebar({
+      namespaces: ["", "default", "kube-system", "monitoring"],
+      selectedNamespaces: new Set(["", "default", "kube-system", "monitoring"]),
+    });
+    fireEvent.change(screen.getByPlaceholderText("Filter namespaces…"), { target: { value: "kube" } });
     expect(screen.getByText("kube-system")).toBeInTheDocument();
     expect(screen.queryByText("default")).not.toBeInTheDocument();
     expect(screen.queryByText("monitoring")).not.toBeInTheDocument();
   });
 
-  it("filters resources by search text when backend is expanded", () => {
-    const backend = makeBackend({
-      resources: ["deployments.apps", "pods", "services"],
-      selectedResources: new Set(["deployments.apps", "pods", "services"]),
-    });
-    renderSidebar({ backends: [backend] });
-
-    fireEvent.click(screen.getByText("prod"));
-
-    const resInputs = screen.getAllByPlaceholderText("Filter…");
-    fireEvent.change(resInputs[1], { target: { value: "deploy" } });
-
-    expect(screen.getByText("deployments.apps")).toBeInTheDocument();
-    expect(screen.queryByText("pods")).not.toBeInTheDocument();
-    expect(screen.queryByText("services")).not.toBeInTheDocument();
-  });
-
-  it("select all with filter only toggles filtered items", () => {
-    const backend = makeBackend({
-      namespaces: ["default", "kube-system", "monitoring"],
+  it("select all with namespace filter only toggles filtered items", () => {
+    const { props } = renderSidebar({
+      namespaces: ["", "default", "kube-system", "monitoring"],
       selectedNamespaces: new Set<string>(),
     });
-    const { props } = renderSidebar({ backends: [backend] });
-
-    fireEvent.click(screen.getByText("prod"));
-
-    const nsInputs = screen.getAllByPlaceholderText("Filter…");
-    fireEvent.change(nsInputs[0], { target: { value: "kube" } });
-
-    const selectAlls = screen.getAllByText(/Select all/);
-    const nsSelectAll = selectAlls[0].closest("label")!.querySelector("input")!;
+    fireEvent.change(screen.getByPlaceholderText("Filter namespaces…"), { target: { value: "kube" } });
+    const nsSelectAll = screen.getAllByText(/Select all/)[0].closest("label")!.querySelector("input")!;
     fireEvent.click(nsSelectAll);
+    expect(props.onToggleAllNamespaces).toHaveBeenCalledWith(["kube-system"], true);
+  });
 
-    expect(props.onToggleAllClusterNamespaces).toHaveBeenCalledWith("prod", ["kube-system"], true);
+  it("collapses and expands namespaces section", () => {
+    renderSidebar({
+      namespaces: ["", "default"],
+      selectedNamespaces: new Set(["", "default"]),
+    });
+    expect(screen.getByText("default")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Namespaces"));
+    expect(screen.queryByText("default")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Namespaces"));
+    expect(screen.getByText("default")).toBeInTheDocument();
+  });
+
+  it("collapses and expands resource types section", () => {
+    renderSidebar({
+      resources: [makeResource("apps", "v1", "deployments")],
+      selectedResources: new Set(["deployments.apps"]),
+    });
+    expect(screen.getByText("apps")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Resource Types"));
+    expect(screen.queryByText("apps")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Resource Types"));
+    expect(screen.getByText("apps")).toBeInTheDocument();
+  });
+
+  it("shows empty string group as double quotes", () => {
+    renderSidebar({
+      resources: [makeResource("", "v1", "pods")],
+      selectedResources: new Set(["pods"]),
+    });
+    expect(screen.getByText('""')).toBeInTheDocument();
   });
 });

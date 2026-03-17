@@ -11,6 +11,7 @@ fullnameOverride: ""
 clusterName: "unknown"
 port: 8080
 serveFrontend: true
+logLevel: "info"  # debug, info, warn, error
 
 # Frontend config — only used when serveFrontend=true.
 # The local backend (this instance) is always included automatically.
@@ -21,6 +22,22 @@ frontend:
   backends: []
   # - url: "http://cluster-b.example.com"
   #   color: "#3b82f6"
+  # Resources to auto-select in the filter when the app first loads.
+  # Use "*" to match any version or resource within a group.
+  # If not set, no resources are pre-selected and the user must select manually.
+  defaultResources:
+    - { group: "apps",                      version: "*", resource: "deployments"  }
+    - { group: "apps",                      version: "*", resource: "statefulsets" }
+    - { group: "apps",                      version: "*", resource: "daemonsets"   }
+    - { group: "batch",                     version: "*", resource: "jobs"         }
+    - { group: "batch",                     version: "*", resource: "cronjobs"     }
+    - { group: "",                          version: "*", resource: "pods"         }
+    - { group: "",                          version: "*", resource: "namespaces"   }
+    - { group: "",                          version: "*", resource: "configmaps"   }
+    - { group: "",                          version: "*", resource: "secrets"      }
+    - { group: "",                          version: "*", resource: "services"     }
+    - { group: "networking.k8s.io",         version: "*", resource: "ingresses"    }
+    - { group: "gateway.networking.k8s.io", version: "*", resource: "httproutes"  }
 
 # Optional backend resource/namespace filter.
 # When set, a ConfigMap is created and mounted as the backend config file (CONFIG_PATH).

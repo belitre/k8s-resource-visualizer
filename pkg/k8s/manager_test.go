@@ -4,12 +4,13 @@ import (
 	"context"
 	"testing"
 
+	"go.uber.org/zap"
 	"github.com/belitre/k8s-resource-visualizer/pkg/config"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes/fake"
 	fakedynamic "k8s.io/client-go/dynamic/fake"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
 func newTestManager(namespaces []string, cfg *config.Config) *Manager {
@@ -27,7 +28,7 @@ func newTestManager(namespaces []string, cfg *config.Config) *Manager {
 		cfg = &config.Config{}
 	}
 
-	return NewManagerForTesting("test-cluster", k8sClient, dynClient, k8sClient.Discovery(), cfg)
+	return NewManagerForTesting("test-cluster", k8sClient, dynClient, k8sClient.Discovery(), cfg, zap.NewNop())
 }
 
 func TestManagerClusterName(t *testing.T) {
@@ -131,16 +132,19 @@ func TestManagerStop(t *testing.T) {
 func TestManagerSetOnResourcesChanged(t *testing.T) {
 	m := newTestManager(nil, nil)
 
-	var got []string
-	m.SetOnResourcesChanged(func(resources []string) {
+	var got []ResourceInfo
+	m.SetOnResourcesChanged(func(resources []ResourceInfo) {
 		got = resources
 	})
 
 	if m.onResourcesChanged == nil {
 		t.Fatal("expected onResourcesChanged to be set")
 	}
-	m.onResourcesChanged([]string{"pods", "deployments.apps"})
-	if len(got) != 2 || got[0] != "pods" {
+	m.onResourcesChanged([]ResourceInfo{
+		{Group: "", Version: "v1", Resource: "pods", Key: "pods"},
+		{Group: "apps", Version: "v1", Resource: "deployments", Key: "deployments.apps"},
+	})
+	if len(got) != 2 || got[0].Key != "pods" {
 		t.Errorf("callback received unexpected resources: %v", got)
 	}
 }

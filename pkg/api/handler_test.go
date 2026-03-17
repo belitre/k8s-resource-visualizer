@@ -8,6 +8,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"go.uber.org/zap"
 	"github.com/belitre/k8s-resource-visualizer/pkg/config"
 	"github.com/belitre/k8s-resource-visualizer/pkg/k8s"
 	"github.com/belitre/k8s-resource-visualizer/pkg/ws"
@@ -31,12 +32,13 @@ func newTestHandler(namespaces []string) (*Handler, *http.ServeMux) {
 	dynClient := fakedynamic.NewSimpleDynamicClient(scheme)
 	cfg := &config.Config{}
 
-	manager := k8s.NewManagerForTesting("test-cluster", k8sClient, dynClient, k8sClient.Discovery(), cfg)
-	hub := ws.NewHub()
+	manager := k8s.NewManagerForTesting("test-cluster", k8sClient, dynClient, k8sClient.Discovery(), cfg, zap.NewNop())
+	hub := ws.NewHub(zap.NewNop())
 
 	handler := &Handler{
 		Manager: manager,
 		Hub:     hub,
+		Log:     zap.NewNop(),
 	}
 
 	mux := http.NewServeMux()
@@ -99,7 +101,7 @@ func TestHandleResources(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	var resources []string
+	var resources []k8s.ResourceInfo
 	if err := json.NewDecoder(w.Body).Decode(&resources); err != nil {
 		t.Fatalf("decode error: %v", err)
 	}
@@ -112,25 +114,26 @@ func TestHandleResources(t *testing.T) {
 func TestHandleFrontendConfig(t *testing.T) {
 	_, mux := newTestHandler(nil)
 
-	// Without FrontendBackends set, /config.json is not overridden
+	// Without FrontendConfig set, /config.json is not overridden
 	req := httptest.NewRequest("GET", "/config.json", nil)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
 	if w.Code != http.StatusNotFound {
-		t.Fatalf("expected 404 without FrontendBackends, got %d", w.Code)
+		t.Fatalf("expected 404 without FrontendConfig, got %d", w.Code)
 	}
 
-	// With FrontendBackends set, /config.json returns the override
+	// With FrontendConfig set, /config.json returns the override
 	k8sClient := fake.NewSimpleClientset()
 	scheme := runtime.NewScheme()
 	dynClient := fakedynamic.NewSimpleDynamicClient(scheme)
-	manager := k8s.NewManagerForTesting("test-cluster", k8sClient, dynClient, k8sClient.Discovery(), &config.Config{})
-	hub := ws.NewHub()
+	manager := k8s.NewManagerForTesting("test-cluster", k8sClient, dynClient, k8sClient.Discovery(), &config.Config{}, zap.NewNop())
+	hub := ws.NewHub(zap.NewNop())
 
 	h := &Handler{
 		Manager:        manager,
 		Hub:            hub,
 		FrontendConfig: []byte(`{"backends":[{"url":"http://a:8080"},{"url":"http://b:8080"}]}`),
+		Log:            zap.NewNop(),
 	}
 	mux2 := http.NewServeMux()
 	h.RegisterRoutes(mux2, nil)

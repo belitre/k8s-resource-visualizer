@@ -3,9 +3,9 @@ package k8s
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
+	"go.uber.org/zap"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 )
@@ -26,7 +26,7 @@ func (m *Manager) WatchNamespaces(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			log.Printf("namespace watch error: %v, retrying in 5s", err)
+			m.log.Warn("namespace watch error, retrying in 5s", zap.Error(err))
 			select {
 			case <-time.After(5 * time.Second):
 			case <-ctx.Done():
@@ -59,32 +59,15 @@ func (m *Manager) watchNamespacesOnce(ctx context.Context, trigger chan<- struct
 }
 
 func (m *Manager) nsChangedDebounce(ctx context.Context, trigger <-chan struct{}) {
-	for {
-		select {
-		case <-ctx.Done():
+	debounce(ctx, trigger, 1*time.Second, func() {
+		namespaces, err := m.ListNamespaces(ctx)
+		if err != nil {
+			m.log.Error("namespace change: failed to list namespaces", zap.Error(err))
 			return
-		case <-trigger:
-			timer := time.NewTimer(1 * time.Second)
-		drain:
-			for {
-				select {
-				case <-trigger:
-				case <-timer.C:
-					break drain
-				case <-ctx.Done():
-					timer.Stop()
-					return
-				}
-			}
-			namespaces, err := m.ListNamespaces(ctx)
-			if err != nil {
-				log.Printf("namespace change: failed to list namespaces: %v", err)
-				continue
-			}
-			log.Printf("namespace change detected: %d namespaces", len(namespaces))
-			if m.onNamespacesChanged != nil {
-				m.onNamespacesChanged(namespaces)
-			}
 		}
-	}
+		m.log.Info("namespace change detected", zap.Int("count", len(namespaces)))
+		if m.onNamespacesChanged != nil {
+			m.onNamespacesChanged(namespaces)
+		}
+	})
 }

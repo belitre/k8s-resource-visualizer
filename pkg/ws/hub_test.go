@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/belitre/k8s-resource-visualizer/pkg/k8s"
 )
 
@@ -14,11 +16,12 @@ func newTestClient(hub *Hub) *Client {
 		hub:  hub,
 		conn: nil,
 		send: make(chan []byte, sendBufSz),
+		log:  zap.NewNop(),
 	}
 }
 
 func TestHubRegisterUnregister(t *testing.T) {
-	hub := NewHub()
+	hub := NewHub(zap.NewNop())
 	c := newTestClient(hub)
 
 	hub.Register(c)
@@ -37,7 +40,7 @@ func TestHubRegisterUnregister(t *testing.T) {
 }
 
 func TestHubUnregisterClosesChannel(t *testing.T) {
-	hub := NewHub()
+	hub := NewHub(zap.NewNop())
 	c := newTestClient(hub)
 
 	hub.Register(c)
@@ -50,7 +53,7 @@ func TestHubUnregisterClosesChannel(t *testing.T) {
 }
 
 func TestHubUnregisterIdempotent(t *testing.T) {
-	hub := NewHub()
+	hub := NewHub(zap.NewNop())
 	c := newTestClient(hub)
 
 	hub.Register(c)
@@ -59,7 +62,7 @@ func TestHubUnregisterIdempotent(t *testing.T) {
 }
 
 func TestHubBroadcastEvent(t *testing.T) {
-	hub := NewHub()
+	hub := NewHub(zap.NewNop())
 	c1 := newTestClient(hub)
 	c2 := newTestClient(hub)
 
@@ -94,11 +97,12 @@ func TestHubBroadcastEvent(t *testing.T) {
 }
 
 func TestHubBroadcastSkipsFullBuffer(t *testing.T) {
-	hub := NewHub()
+	hub := NewHub(zap.NewNop())
 	c := &Client{
 		hub:  hub,
 		conn: nil,
 		send: make(chan []byte, 1),
+		log:  zap.NewNop(),
 	}
 
 	hub.Register(c)
@@ -109,7 +113,7 @@ func TestHubBroadcastSkipsFullBuffer(t *testing.T) {
 }
 
 func TestHubConcurrentBroadcast(t *testing.T) {
-	hub := NewHub()
+	hub := NewHub(zap.NewNop())
 	clients := make([]*Client, 10)
 	for i := range clients {
 		clients[i] = newTestClient(hub)

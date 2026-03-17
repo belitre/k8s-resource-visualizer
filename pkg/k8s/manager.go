@@ -3,11 +3,11 @@ package k8s
 import (
 	"context"
 	"fmt"
-	"log"
 	"sort"
 	"strings"
 	"sync"
 
+	"go.uber.org/zap"
 	"github.com/belitre/k8s-resource-visualizer/pkg/config"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -20,23 +20,24 @@ import (
 
 // Manager handles discovery and watching of resources.
 type Manager struct {
-	dynClient          dynamic.Interface
-	k8sClient          kubernetes.Interface
-	discoClient        discovery.DiscoveryInterface
-	clusterName        string
-	cfg                *config.Config
-	mu                 sync.Mutex
-	watchersByGVR      map[string]*Watcher
-	callback             EventCallback
-	onResourcesChanged   func([]string)
-	onNamespacesChanged  func([]string)
+	dynClient           dynamic.Interface
+	k8sClient           kubernetes.Interface
+	discoClient         discovery.DiscoveryInterface
+	clusterName         string
+	cfg                 *config.Config
+	mu                  sync.Mutex
+	watchersByGVR       map[string]*Watcher
+	callback            EventCallback
+	onResourcesChanged  func([]ResourceInfo)
+	onNamespacesChanged func([]string)
+	log                 *zap.Logger
 }
 
 // NewManager creates a Manager. Tries in-cluster config, falls back to kubeconfig.
-func NewManager(clusterName string, cfg *config.Config, callback EventCallback) (*Manager, error) {
+func NewManager(clusterName string, cfg *config.Config, callback EventCallback, log *zap.Logger) (*Manager, error) {
 	restCfg, err := rest.InClusterConfig()
 	if err != nil {
-		log.Printf("in-cluster config not available, falling back to kubeconfig: %v", err)
+		log.Warn("in-cluster config not available, falling back to kubeconfig", zap.Error(err))
 		restCfg, err = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 			clientcmd.NewDefaultClientConfigLoadingRules(),
 			&clientcmd.ConfigOverrides{},
@@ -69,11 +70,12 @@ func NewManager(clusterName string, cfg *config.Config, callback EventCallback) 
 		cfg:           cfg,
 		callback:      callback,
 		watchersByGVR: make(map[string]*Watcher),
+		log:           log,
 	}, nil
 }
 
 // NewManagerForTesting creates a Manager with injected clients.
-func NewManagerForTesting(clusterName string, k8sClient kubernetes.Interface, dynClient dynamic.Interface, discoClient discovery.DiscoveryInterface, cfg *config.Config) *Manager {
+func NewManagerForTesting(clusterName string, k8sClient kubernetes.Interface, dynClient dynamic.Interface, discoClient discovery.DiscoveryInterface, cfg *config.Config, log *zap.Logger) *Manager {
 	return &Manager{
 		dynClient:     dynClient,
 		k8sClient:     k8sClient,
@@ -82,11 +84,12 @@ func NewManagerForTesting(clusterName string, k8sClient kubernetes.Interface, dy
 		cfg:           cfg,
 		callback:      func(ev VisualEvent) {},
 		watchersByGVR: make(map[string]*Watcher),
+		log:           log,
 	}
 }
 
 // SetOnResourcesChanged registers a callback invoked after Rediscover changes the watcher set.
-func (m *Manager) SetOnResourcesChanged(fn func([]string)) {
+func (m *Manager) SetOnResourcesChanged(fn func([]ResourceInfo)) {
 	m.onResourcesChanged = fn
 }
 
@@ -123,7 +126,7 @@ func (m *Manager) Rediscover() error {
 	_, apiResourceLists, err := m.discoClient.ServerGroupsAndResources()
 	if err != nil {
 		// Some resources may fail discovery (e.g. metrics) but we continue
-		log.Printf("partial discovery error (continuing): %v", err)
+		m.log.Warn("partial discovery error (continuing)", zap.Error(err))
 	}
 
 	newGVRs := make(map[string]schema.GroupVersionResource)
@@ -156,7 +159,7 @@ func (m *Manager) Rediscover() error {
 	removed := 0
 	for key, w := range m.watchersByGVR {
 		if _, exists := newGVRs[key]; !exists {
-			log.Printf("stopping watcher for removed resource: %s", key)
+			m.log.Info("stopping watcher for removed resource", zap.String("resource", key))
 			w.Stop()
 			delete(m.watchersByGVR, key)
 			removed++
@@ -166,19 +169,19 @@ func (m *Manager) Rediscover() error {
 	added := 0
 	for key, gvr := range newGVRs {
 		if _, exists := m.watchersByGVR[key]; !exists {
-			w := NewWatcher(m.dynClient, m.clusterName, gvr, "", m.callback)
+			w := NewWatcher(m.dynClient, m.clusterName, gvr, "", m.callback, m.log)
 			m.watchersByGVR[key] = w
 			added++
 			go func(w *Watcher) {
 				if err := w.Start(); err != nil {
-					log.Printf("watcher for %s stopped: %v", w.ResourceType(), err)
+					m.log.Error("watcher stopped unexpectedly", zap.String("resource", w.ResourceType()), zap.Error(err))
 				}
 			}(w)
 		}
 	}
 	m.mu.Unlock()
 
-	log.Printf("discovery complete: watching %d resources (+%d -%d)", len(newGVRs), added, removed)
+	m.log.Info("discovery complete", zap.Int("watching", len(newGVRs)), zap.Int("added", added), zap.Int("removed", removed))
 
 	if (added > 0 || removed > 0) && m.onResourcesChanged != nil {
 		m.onResourcesChanged(m.ListWatchedResources())
@@ -188,20 +191,26 @@ func (m *Manager) Rediscover() error {
 }
 
 // ListWatchedResources returns the resource types currently being watched.
-func (m *Manager) ListWatchedResources() []string {
+func (m *Manager) ListWatchedResources() []ResourceInfo {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	seen := make(map[string]bool)
-	var resources []string
+	var resources []ResourceInfo
 	for _, w := range m.watchersByGVR {
-		rt := w.ResourceType()
-		if !seen[rt] {
-			seen[rt] = true
-			resources = append(resources, rt)
+		key := w.ResourceType()
+		if !seen[key] {
+			seen[key] = true
+			gvr := w.GVR()
+			resources = append(resources, ResourceInfo{
+				Group:    gvr.Group,
+				Version:  gvr.Version,
+				Resource: gvr.Resource,
+				Key:      key,
+			})
 		}
 	}
-	sort.Strings(resources)
+	sort.Slice(resources, func(i, j int) bool { return resources[i].Key < resources[j].Key })
 	return resources
 }
 
