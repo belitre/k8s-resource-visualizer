@@ -42,8 +42,9 @@ The frontend:
 
 ## Prerequisites
 
-- Go 1.24+
-- Node.js v25.6.1+
+- Go 1.25.7+
+- Node.js v25.8.1+
+- Helm 3+ (for Helm-based deployment)
 - A Kubernetes cluster (for deployment) or kubeconfig (for local dev)
 - A Gateway API controller (for HTTPRoute, optional)
 
@@ -52,8 +53,8 @@ The frontend:
 ```
 .
 ├── main.go                     # Go entry point
-├── Dockerfile                  # Multi-stage build
-├── Makefile                    # Build, test, lint targets
+├── Dockerfile                  # Multi-stage build (Go 1.25.7 + Node 25.6)
+├── Makefile                    # Build, test, lint, docker, helm, release targets
 ├── pkg/
 │   ├── config/
 │   │   └── config.go           # YAML config: include/exclude resources & namespaces
@@ -67,7 +68,7 @@ The frontend:
 │       └── handler.go          # HTTP handlers (REST + WebSocket + static files)
 ├── frontend/                   # React + TypeScript + Vite
 │   ├── public/
-│   │   └── config.json         # Pre-configured backend URLs
+│   │   └── config.json         # Pre-configured backend URLs (local dev)
 │   └── src/
 │       ├── components/
 │       │   ├── Sidebar.tsx     # Backend management + namespace/resource filters
@@ -75,19 +76,28 @@ The frontend:
 │       │   └── EventCard.tsx   # Individual event card with fade animation
 │       └── hooks/
 │           └── useBackendConnection.ts  # WebSocket + REST per backend
-└── k8s/                        # Kubernetes manifests
-    ├── rbac.yaml               # ServiceAccount + ClusterRole (all resources)
-    ├── deployment.yaml         # Deployment + Service
-    └── httproute.yaml          # Gateway API HTTPRoute
+├── helm/
+│   └── k8s-resource-visualizer/   # Helm chart
+│       ├── Chart.yaml
+│       ├── values.yaml
+│       └── templates/
+├── k8s/                        # Raw Kubernetes manifests
+│   ├── rbac.yaml               # ServiceAccount + ClusterRole (all resources)
+│   ├── deployment.yaml         # Deployment + Service
+│   └── httproute.yaml          # Gateway API HTTPRoute
+└── .github/
+    └── workflows/
+        ├── ci.yml              # PR checks (build, test, helm validate, docker build)
+        └── release.yml         # Semantic release on push to main
 ```
 
 ## Development
 
 ```bash
-# Build everything
+# Build everything (frontend + backend)
 make build
 
-# Run tests
+# Run all tests
 make test
 
 # Run only backend tests
@@ -102,7 +112,7 @@ make lint
 # Start backend locally (uses kubeconfig)
 make dev-backend
 
-# Start frontend dev server (with hot reload)
+# Start frontend dev server (with hot reload, proxies to :8080)
 make dev-frontend
 ```
 
@@ -110,8 +120,8 @@ make dev-frontend
 
 ### Environment Variables
 
-| Variable       | Default   | Description                          |
-|----------------|-----------|--------------------------------------|
+| Variable         | Default   | Description                                            |
+|------------------|-----------|--------------------------------------------------------|
 | `CLUSTER_NAME`   | `unknown` | Name shown in the frontend UI                          |
 | `PORT`           | `8080`    | HTTP listen port                                       |
 | `CONFIG_PATH`    |           | Path to backend config YAML file                       |
@@ -124,7 +134,7 @@ Optional YAML file to include/exclude resources and namespaces. By default, the 
 ```yaml
 # All fields optional. Default: watch everything.
 resources:
-  include:    # If set, ONLY watch these (whitelist mode)
+  include:    # If set, ONLY watch these (allowlist mode)
     - group: "apps"
       version: "v1"
       resource: "deployments"
@@ -143,13 +153,20 @@ namespaces:
 
 Logic: if `include` is empty/absent, watch all. Then subtract `exclude`.
 
-### Frontend Config (`frontend/public/config.json`)
+### Frontend Config
 
-Pre-configure backend URLs so the frontend auto-connects on startup:
+The frontend loads `/config.json` at startup to pre-configure backend connections.
+
+In production (Helm), this file is generated from `values.yaml` and mounted into the container — see [Helm deployment](#helm-deployment) below.
+
+For local development, edit `frontend/public/config.json`. Each entry can be a plain URL or an object with an optional hex color:
 
 ```json
 {
-  "backends": ["http://cluster-a:8080", "http://cluster-b:8080"]
+  "backends": [
+    "http://localhost:8080",
+    { "url": "http://cluster-b:8080", "color": "#3b82f6" }
+  ]
 }
 ```
 
@@ -163,6 +180,7 @@ If the file is missing or has an empty array, the frontend starts with no backen
 | `GET /api/namespaces` | Returns list of watched namespace names  |
 | `GET /api/resources`  | Returns list of watched resource types   |
 | `GET /ws`             | WebSocket endpoint for event streaming   |
+| `GET /config.json`    | Frontend backend config (overrides embedded when mounted) |
 | `GET /`               | Serves the frontend static files         |
 
 ### WebSocket Protocol
@@ -185,20 +203,143 @@ If the file is missing or has an empty array, the frontend starts with no backen
 
 Actions: `CREATED`, `UPDATED`, `DELETED`
 
-## Deployment
+## Docker
 
-### Build the Docker image
+### Build
 
 ```bash
+# Build with default tag (ghcr.io/belitre/k8s-resource-visualizer:latest)
 make docker-build
+
+# Build with a specific version
+make docker-build VERSION=1.2.3
 ```
 
-### Deploy to Kubernetes
+### Push to GitHub Container Registry
 
-Edit the manifests in `k8s/` to set your cluster name, gateway, and hostname:
+Log in first, then push:
 
-1. **`k8s/deployment.yaml`** — set `CLUSTER_NAME` env var, optionally mount a config file and set `CONFIG_PATH`
-2. **`k8s/httproute.yaml`** — set `parentRefs` (your Gateway name) and `hostnames`
+```bash
+# Login (requires a GitHub PAT with write:packages scope)
+CR_USER=<your-github-username> CR_TOKEN=<your-github-pat> make docker-login
+
+# Push
+make docker-push VERSION=1.2.3
+
+# Build and push in one step
+make docker-build-push VERSION=1.2.3
+```
+
+## Helm Deployment
+
+### Install / Upgrade
+
+```bash
+helm upgrade --install k8s-resource-visualizer helm/k8s-resource-visualizer \
+  --set clusterName=prod-eu \
+  --set frontend.selfUrl=https://prod-eu.example.com
+```
+
+### Key values
+
+| Value | Default | Description |
+|-------|---------|-------------|
+| `clusterName` | `unknown` | Cluster name shown in the UI |
+| `serveFrontend` | `true` | Set to `false` for backend-only deployments |
+| `frontend.selfUrl` | `http://localhost:8080` | URL of this instance as seen from the browser |
+| `frontend.selfColor` | | Optional hex color for this cluster in the UI |
+| `frontend.backends` | `[]` | Additional backend clusters to pre-configure |
+| `backendConfig` | `{}` | Resource/namespace filter (see below) |
+| `ingress.enabled` | `false` | Enable Ingress |
+| `httpRoute.enabled` | `false` | Enable Gateway API HTTPRoute |
+
+### Frontend backends with colors
+
+```yaml
+# values.yaml
+clusterName: prod-eu
+frontend:
+  selfUrl: "https://prod-eu.example.com"
+  selfColor: "#3b82f6"
+  backends:
+    - url: "https://prod-us.example.com"
+      color: "#f59e0b"
+    - url: "https://staging.example.com"
+      color: "#8b5cf6"
+```
+
+### Backend resource/namespace filter
+
+When `backendConfig.resources.include` is set, the ClusterRole is automatically scoped to only those resources.
+
+```yaml
+# values.yaml
+backendConfig:
+  resources:
+    include:
+      - group: "apps"
+        version: "v1"
+        resource: "deployments"
+      - group: ""
+        version: "v1"
+        resource: "pods"
+    exclude:
+      - group: ""
+        version: "v1"
+        resource: "events"
+  namespaces:
+    exclude:
+      - kube-system
+```
+
+### With Ingress
+
+```yaml
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: events.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: events-tls
+      hosts: [events.example.com]
+```
+
+### With HTTPRoute (Gateway API)
+
+```yaml
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: my-gateway
+      namespace: default
+  hostnames:
+    - events.example.com
+```
+
+### Multi-cluster setup
+
+Deploy the backend to each cluster with `SERVE_FRONTEND=false`, and only one cluster serves the UI:
+
+```bash
+# Cluster A — serves the frontend, pre-configured with all backends
+helm upgrade --install k8s-resource-visualizer helm/k8s-resource-visualizer \
+  --set clusterName=prod-eu \
+  --set frontend.selfUrl=https://prod-eu.example.com \
+  --set frontend.selfColor="#3b82f6" \
+  --set frontend.backends[0].url=https://prod-us.example.com \
+  --set frontend.backends[0].color="#f59e0b"
+
+# Cluster B — backend only, no UI
+helm upgrade --install k8s-resource-visualizer helm/k8s-resource-visualizer \
+  --set clusterName=prod-us \
+  --set serveFrontend=false
+```
+
+### Raw manifests (alternative to Helm)
 
 ```bash
 kubectl apply -f k8s/rbac.yaml
@@ -206,11 +347,29 @@ kubectl apply -f k8s/deployment.yaml
 kubectl apply -f k8s/httproute.yaml
 ```
 
-### Multi-cluster setup
+## CI/CD
 
-Deploy to each cluster with a different `CLUSTER_NAME`. On clusters where you only need the API/WebSocket (no UI), set `SERVE_FRONTEND=false` — one deployment serves the frontend and connects to all the others as backends.
+### CI (Pull Requests)
 
-Configure `frontend/public/config.json` with all backend URLs before building, or add them at runtime via the sidebar.
+The [CI workflow](.github/workflows/ci.yml) runs on every PR to `main`:
+
+- **Backend** — build + test (`make build-backend`, `make test-backend`)
+- **Frontend** — typecheck + test + build (`make ci-frontend`)
+- **Helm** — lint + template validation for all scenarios (`make helm-validate`)
+- **Docker** — build image (no push, with GHA layer cache)
+
+### Releases
+
+The [release workflow](.github/workflows/release.yml) runs on push to `main` using [semantic-release](https://semantic-release.gitbook.io) with conventional commits:
+
+| Commit type | Release |
+|-------------|---------|
+| `feat:` | minor |
+| `fix:`, `perf:`, `docs:`, `refactor:` | patch |
+| `feat!:` / `BREAKING CHANGE` | major |
+| `chore:`, `test:`, `build:`, `ci:` | no release |
+
+The workflow builds everything, pushes the Docker image to `ghcr.io/belitre/k8s-resource-visualizer`, and creates a GitHub release with changelog.
 
 ## License
 

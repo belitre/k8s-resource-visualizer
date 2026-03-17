@@ -1,4 +1,4 @@
-.PHONY: all build build-backend build-frontend test test-backend test-frontend lint lint-backend lint-frontend clean dev dev-backend dev-frontend docker-build docker-push docker-build-push install-semantic-release release release-dry-run
+.PHONY: all build build-backend build-frontend test test-backend test-frontend lint lint-backend lint-frontend clean dev dev-backend dev-frontend docker-login docker-build docker-push docker-build-push install-semantic-release release release-dry-run frontend-dist-placeholder ci-frontend helm-lint helm-validate
 
 IMAGE ?= ghcr.io/belitre/k8s-resource-visualizer
 VERSION ?= latest
@@ -36,6 +36,42 @@ lint-backend:
 lint-frontend:
 	cd frontend && npx tsc --noEmit
 
+# ── CI ───────────────────────────────────────────────────────────────────────
+
+frontend-dist-placeholder:
+	mkdir -p frontend/dist && touch frontend/dist/placeholder
+
+ci-frontend:
+	cd frontend && npm ci && npx tsc --noEmit && npm test -- --run && npm run build
+
+# ── Helm ─────────────────────────────────────────────────────────────────────
+
+helm-lint:
+	helm lint helm/k8s-resource-visualizer
+
+helm-validate: helm-lint
+	helm template test helm/k8s-resource-visualizer
+	helm template test helm/k8s-resource-visualizer \
+		--set ingress.enabled=true \
+		--set ingress.hosts[0].host=example.com \
+		--set ingress.hosts[0].paths[0].path=/ \
+		--set ingress.hosts[0].paths[0].pathType=Prefix
+	helm template test helm/k8s-resource-visualizer \
+		--set httpRoute.enabled=true \
+		--set httpRoute.hostnames[0]=events.example.com
+	helm template test helm/k8s-resource-visualizer \
+		--set backendConfig.namespaces.exclude[0]=kube-system \
+		--set backendConfig.resources.exclude[0].group="" \
+		--set backendConfig.resources.exclude[0].version=v1 \
+		--set backendConfig.resources.exclude[0].resource=events
+	helm template test helm/k8s-resource-visualizer \
+		--set backendConfig.resources.include[0].group=apps \
+		--set backendConfig.resources.include[0].version=v1 \
+		--set backendConfig.resources.include[0].resource=deployments \
+		--set backendConfig.resources.include[1].group="" \
+		--set backendConfig.resources.include[1].version=v1 \
+		--set backendConfig.resources.include[1].resource=pods
+
 # ── Dev ──────────────────────────────────────────────────────────────────────
 
 dev-backend:
@@ -50,6 +86,9 @@ dev:
 	@echo "  make dev-frontend   # Vite dev server on :5173 (proxies to :8080)"
 
 # ── Docker ───────────────────────────────────────────────────────────────────
+
+docker-login:
+	echo "$(CR_TOKEN)" | docker login ghcr.io -u $(CR_USER) --password-stdin
 
 docker-build:
 	docker build -t $(IMAGE):$(VERSION) .
@@ -68,7 +107,7 @@ clean:
 
 # ── Semantic release ──────────────────────────────────────────────────────────
 
-install-semantic-release: ## Install semantic-release dependencies
+install-semantic-release:
 	@echo "Installing semantic-release and plugins..."
 	npm install -g \
 		semantic-release@latest \
@@ -78,11 +117,10 @@ install-semantic-release: ## Install semantic-release dependencies
 		conventional-changelog-conventionalcommits@latest
 	@echo "Semantic-release installed successfully!"
 
-
-release: ## Run semantic-release to create a new release
+release:
 	@echo "Running semantic-release..."
 	npx semantic-release
 
-release-dry-run: ## Run semantic-release in dry-run mode (no actual release)
+release-dry-run:
 	@echo "Running semantic-release in dry-run mode..."
 	npx semantic-release --dry-run
