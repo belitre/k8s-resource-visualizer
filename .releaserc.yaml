@@ -62,12 +62,9 @@ plugins:
             hidden: true
 
   - - "@semantic-release/exec"
-    - prepareCmd: "echo ${nextRelease.version} > .version && VERSION=${nextRelease.version} make docker-login docker-build-push"
+    - prepareCmd: "VERSION=${nextRelease.version} make docker-login docker-build-push && CHART_VERSION=${nextRelease.version} make helm-login helm-push"
 
   - - "@semantic-release/github"
-    - assets:
-        - path: "build/*.tar.gz"
-        - path: "build/*.zip"
 
   - - "@semantic-release/git"
     - assets:

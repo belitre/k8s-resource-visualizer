@@ -1,7 +1,10 @@
-.PHONY: all build build-backend build-frontend test test-backend test-frontend lint lint-backend lint-frontend clean dev dev-backend dev-frontend docker-login docker-build docker-push docker-build-push install-semantic-release release release-dry-run frontend-dist-placeholder ci-frontend helm-lint helm-validate
+.PHONY: all build build-backend build-frontend test test-backend test-frontend lint lint-backend lint-frontend clean dev dev-backend dev-frontend docker-login docker-build docker-push docker-build-push install-semantic-release release release-dry-run frontend-dist-placeholder ci-frontend helm-lint helm-validate helm-login helm-package helm-push
 
 IMAGE ?= ghcr.io/belitre/k8s-resource-visualizer
 VERSION ?= latest
+
+CHART_REGISTRY ?= ghcr.io/belitre/charts
+CHART_VERSION ?= latest
 
 # Default target
 all: build
@@ -71,6 +74,16 @@ helm-validate: helm-lint
 		--set backendConfig.resources.include[1].group="" \
 		--set backendConfig.resources.include[1].version=v1 \
 		--set backendConfig.resources.include[1].resource=pods
+
+helm-login:
+	echo "$(CR_TOKEN)" | helm registry login ghcr.io -u $(CR_USER) --password-stdin
+
+helm-package:
+	helm package helm/k8s-resource-visualizer --version $(CHART_VERSION) --app-version $(CHART_VERSION)
+
+helm-push: helm-package
+	helm push k8s-resource-visualizer-$(CHART_VERSION).tgz oci://$(CHART_REGISTRY)
+	rm k8s-resource-visualizer-$(CHART_VERSION).tgz
 
 # ── Dev ──────────────────────────────────────────────────────────────────────
 

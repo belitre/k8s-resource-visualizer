@@ -230,9 +230,31 @@ make docker-push VERSION=1.2.3
 make docker-build-push VERSION=1.2.3
 ```
 
+### Push the Helm chart
+
+```bash
+# Login to Helm OCI registry (same PAT as Docker)
+CR_USER=<your-github-username> CR_TOKEN=<your-github-pat> make helm-login
+
+# Package and push
+make helm-push CHART_VERSION=1.2.3
+```
+
 ## Helm Deployment
 
 ### Install / Upgrade
+
+From the OCI registry (released versions):
+
+```bash
+helm upgrade --install k8s-resource-visualizer \
+  oci://ghcr.io/belitre/charts/k8s-resource-visualizer \
+  --version 1.2.3 \
+  --set clusterName=prod-eu \
+  --set frontend.selfUrl=https://prod-eu.example.com
+```
+
+From the local chart (development):
 
 ```bash
 helm upgrade --install k8s-resource-visualizer helm/k8s-resource-visualizer \
