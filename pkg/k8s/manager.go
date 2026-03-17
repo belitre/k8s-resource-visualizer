@@ -20,14 +20,16 @@ import (
 
 // Manager handles discovery and watching of resources.
 type Manager struct {
-	dynClient   dynamic.Interface
-	k8sClient   kubernetes.Interface
-	discoClient discovery.DiscoveryInterface
-	clusterName string
-	cfg         *config.Config
-	mu          sync.Mutex
-	watchers    []*Watcher
-	callback    EventCallback
+	dynClient          dynamic.Interface
+	k8sClient          kubernetes.Interface
+	discoClient        discovery.DiscoveryInterface
+	clusterName        string
+	cfg                *config.Config
+	mu                 sync.Mutex
+	watchersByGVR      map[string]*Watcher
+	callback             EventCallback
+	onResourcesChanged   func([]string)
+	onNamespacesChanged  func([]string)
 }
 
 // NewManager creates a Manager. Tries in-cluster config, falls back to kubeconfig.
@@ -60,25 +62,32 @@ func NewManager(clusterName string, cfg *config.Config, callback EventCallback) 
 	}
 
 	return &Manager{
-		dynClient:   dynClient,
-		k8sClient:   k8sClient,
-		discoClient: discoClient,
-		clusterName: clusterName,
-		cfg:         cfg,
-		callback:    callback,
+		dynClient:     dynClient,
+		k8sClient:     k8sClient,
+		discoClient:   discoClient,
+		clusterName:   clusterName,
+		cfg:           cfg,
+		callback:      callback,
+		watchersByGVR: make(map[string]*Watcher),
 	}, nil
 }
 
 // NewManagerForTesting creates a Manager with injected clients.
 func NewManagerForTesting(clusterName string, k8sClient kubernetes.Interface, dynClient dynamic.Interface, discoClient discovery.DiscoveryInterface, cfg *config.Config) *Manager {
 	return &Manager{
-		dynClient:   dynClient,
-		k8sClient:   k8sClient,
-		discoClient: discoClient,
-		clusterName: clusterName,
-		cfg:         cfg,
-		callback:    func(ev VisualEvent) {},
+		dynClient:     dynClient,
+		k8sClient:     k8sClient,
+		discoClient:   discoClient,
+		clusterName:   clusterName,
+		cfg:           cfg,
+		callback:      func(ev VisualEvent) {},
+		watchersByGVR: make(map[string]*Watcher),
 	}
+}
+
+// SetOnResourcesChanged registers a callback invoked after Rediscover changes the watcher set.
+func (m *Manager) SetOnResourcesChanged(fn func([]string)) {
+	m.onResourcesChanged = fn
 }
 
 // ClusterName returns the cluster name.
@@ -105,43 +114,61 @@ func (m *Manager) ListNamespaces(ctx context.Context) ([]string, error) {
 
 // DiscoverAndWatch discovers all API resources and starts watchers.
 func (m *Manager) DiscoverAndWatch() error {
+	return m.Rediscover()
+}
+
+// Rediscover re-runs resource discovery, starts watchers for new resources, stops watchers
+// for removed resources, and calls OnResourcesChanged if the watched resource set changed.
+func (m *Manager) Rediscover() error {
 	_, apiResourceLists, err := m.discoClient.ServerGroupsAndResources()
 	if err != nil {
 		// Some resources may fail discovery (e.g. metrics) but we continue
 		log.Printf("partial discovery error (continuing): %v", err)
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+	newGVRs := make(map[string]schema.GroupVersionResource)
 	for _, list := range apiResourceLists {
 		gv, err := schema.ParseGroupVersion(list.GroupVersion)
 		if err != nil {
 			continue
 		}
-
 		for _, apiRes := range list.APIResources {
 			// Skip subresources (e.g. pods/status, pods/log)
 			if strings.Contains(apiRes.Name, "/") {
 				continue
 			}
-
 			if !hasVerb(apiRes.Verbs, "watch") {
 				continue
 			}
-
 			if !m.cfg.ShouldWatchResource(gv.Group, gv.Version, apiRes.Name) {
 				continue
 			}
+			gvr := schema.GroupVersionResource{Group: gv.Group, Version: gv.Version, Resource: apiRes.Name}
+			newGVRs[gvrKey(gvr)] = gvr
+		}
+	}
 
-			gvr := schema.GroupVersionResource{
-				Group:    gv.Group,
-				Version:  gv.Version,
-				Resource: apiRes.Name,
-			}
+	m.mu.Lock()
+	if m.watchersByGVR == nil {
+		m.watchersByGVR = make(map[string]*Watcher)
+	}
 
+	removed := 0
+	for key, w := range m.watchersByGVR {
+		if _, exists := newGVRs[key]; !exists {
+			log.Printf("stopping watcher for removed resource: %s", key)
+			w.Stop()
+			delete(m.watchersByGVR, key)
+			removed++
+		}
+	}
+
+	added := 0
+	for key, gvr := range newGVRs {
+		if _, exists := m.watchersByGVR[key]; !exists {
 			w := NewWatcher(m.dynClient, m.clusterName, gvr, "", m.callback)
-			m.watchers = append(m.watchers, w)
+			m.watchersByGVR[key] = w
+			added++
 			go func(w *Watcher) {
 				if err := w.Start(); err != nil {
 					log.Printf("watcher for %s stopped: %v", w.ResourceType(), err)
@@ -149,19 +176,25 @@ func (m *Manager) DiscoverAndWatch() error {
 			}(w)
 		}
 	}
+	m.mu.Unlock()
 
-	log.Printf("started %d watchers", len(m.watchers))
+	log.Printf("discovery complete: watching %d resources (+%d -%d)", len(newGVRs), added, removed)
+
+	if (added > 0 || removed > 0) && m.onResourcesChanged != nil {
+		m.onResourcesChanged(m.ListWatchedResources())
+	}
+
 	return nil
 }
 
-// ListWatchedResources returns the resource types being watched.
+// ListWatchedResources returns the resource types currently being watched.
 func (m *Manager) ListWatchedResources() []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	seen := make(map[string]bool)
 	var resources []string
-	for _, w := range m.watchers {
+	for _, w := range m.watchersByGVR {
 		rt := w.ResourceType()
 		if !seen[rt] {
 			seen[rt] = true
@@ -177,10 +210,14 @@ func (m *Manager) Stop() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	for _, w := range m.watchers {
+	for _, w := range m.watchersByGVR {
 		w.Stop()
 	}
-	m.watchers = nil
+	m.watchersByGVR = nil
+}
+
+func gvrKey(gvr schema.GroupVersionResource) string {
+	return fmt.Sprintf("%s/%s/%s", gvr.Group, gvr.Version, gvr.Resource)
 }
 
 func hasVerb(verbs metav1.Verbs, verb string) bool {

@@ -26,10 +26,18 @@ type NamespaceFilter struct {
 	Exclude []string `yaml:"exclude"`
 }
 
+// RemoteBackend is a backend in another cluster that this instance can proxy to.
+type RemoteBackend struct {
+	Name  string `yaml:"name"`
+	URL   string `yaml:"url"`
+	Color string `yaml:"color,omitempty"`
+}
+
 // Config is the backend configuration.
 type Config struct {
-	Resources  ResourceFilter  `yaml:"resources"`
-	Namespaces NamespaceFilter `yaml:"namespaces"`
+	Resources      ResourceFilter  `yaml:"resources"`
+	Namespaces     NamespaceFilter `yaml:"namespaces"`
+	RemoteBackends []RemoteBackend `yaml:"remoteBackends"`
 }
 
 // Load reads config from a YAML file. Returns default (watch-all) config if

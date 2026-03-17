@@ -8,6 +8,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"github.com/belitre/k8s-resource-visualizer/pkg/config"
 	"github.com/belitre/k8s-resource-visualizer/pkg/k8s"
 	"github.com/belitre/k8s-resource-visualizer/pkg/ws"
 )
@@ -20,7 +21,18 @@ var upgrader = websocket.Upgrader{
 type Handler struct {
 	Manager        *k8s.Manager
 	Hub            *ws.Hub
-	FrontendConfig []byte // when non-nil, overrides /config.json
+	FrontendConfig []byte                  // when non-nil, overrides /config.json
+	RemoteBackends []config.RemoteBackend  // backends this instance can proxy to
+}
+
+// remoteBackend looks up a remote backend by name.
+func (h *Handler) remoteBackend(name string) (config.RemoteBackend, bool) {
+	for _, b := range h.RemoteBackends {
+		if b.Name == name {
+			return b, true
+		}
+	}
+	return config.RemoteBackend{}, false
 }
 
 // InfoResponse is returned by GET /api/info.
@@ -33,11 +45,15 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux, frontendFS fs.FS) {
 	mux.HandleFunc("GET /api/info", h.handleInfo)
 	mux.HandleFunc("GET /api/namespaces", h.handleNamespaces)
 	mux.HandleFunc("GET /api/resources", h.handleResources)
+	mux.HandleFunc("GET /api/proxy-backends", h.handleProxyBackends)
 	mux.HandleFunc("GET /ws", h.handleWebSocket)
 
 	if h.FrontendConfig != nil {
 		mux.HandleFunc("GET /config.json", h.handleFrontendConfig)
 	}
+
+	mux.HandleFunc("GET /proxy/{name}/ws", h.handleProxyWS)
+	mux.HandleFunc("GET /proxy/{name}/api/{path...}", h.handleProxyAPI)
 
 	if frontendFS != nil {
 		mux.Handle("GET /", http.FileServerFS(frontendFS))

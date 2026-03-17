@@ -65,6 +65,54 @@ func (h *Hub) BroadcastEvent(ev k8s.VisualEvent) {
 	}
 }
 
+// BroadcastResourcesUpdated sends an updated resource list to all connected clients.
+func (h *Hub) BroadcastResourcesUpdated(resources []string) {
+	msg := ServerMessage{
+		Type: "resources_updated",
+		Data: resources,
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("error marshaling resources_updated: %v", err)
+		return
+	}
+
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	for c := range h.clients {
+		select {
+		case c.send <- data:
+		default:
+		}
+	}
+}
+
+// BroadcastNamespacesUpdated sends an updated namespace list to all connected clients.
+func (h *Hub) BroadcastNamespacesUpdated(namespaces []string) {
+	msg := ServerMessage{
+		Type: "namespaces_updated",
+		Data: namespaces,
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("error marshaling namespaces_updated: %v", err)
+		return
+	}
+
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	for c := range h.clients {
+		select {
+		case c.send <- data:
+		default:
+		}
+	}
+}
+
 // ServerMessage is sent from server to client.
 type ServerMessage struct {
 	Type string      `json:"type"`

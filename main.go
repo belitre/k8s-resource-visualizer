@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"flag"
 	"io/fs"
@@ -55,6 +56,16 @@ func main() {
 		log.Fatalf("failed to discover and watch resources: %v", err)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	manager.SetOnResourcesChanged(func(resources []string) {
+		hub.BroadcastResourcesUpdated(resources)
+	})
+	manager.SetOnNamespacesChanged(func(namespaces []string) {
+		hub.BroadcastNamespacesUpdated(namespaces)
+	})
+	go manager.WatchCRDs(ctx)
+	go manager.WatchNamespaces(ctx)
+
 	var frontendFS fs.FS
 	if os.Getenv("SERVE_FRONTEND") != "false" {
 		sub, err := fs.Sub(frontendFiles, "frontend/dist")
@@ -73,6 +84,7 @@ func main() {
 		Manager:        manager,
 		Hub:            hub,
 		FrontendConfig: frontendConfig,
+		RemoteBackends: cfg.RemoteBackends,
 	}
 
 	mux := http.NewServeMux()
@@ -92,6 +104,7 @@ func main() {
 
 	<-sig
 	log.Println("shutting down...")
+	cancel()
 	manager.Stop()
 }
 
