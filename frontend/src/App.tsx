@@ -287,12 +287,14 @@ export default function App() {
 
   const backendsForSidebar = backendUrls.map((url) => {
     const info = backendInfoMap.get(url);
+    const clusterName = info?.clusterName ?? "";
     return {
       url,
-      clusterName: info?.clusterName ?? "",
+      clusterName,
       status: info?.status ?? "connecting",
       removable: !configBackends.has(url) && !proxyBackendUrls.has(url),
       enabled: !disabledBackends.has(url),
+      color: clusterName ? clusterColorMap.get(clusterName) : undefined,
     };
   });
 

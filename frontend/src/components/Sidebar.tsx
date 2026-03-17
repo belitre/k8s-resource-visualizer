@@ -7,6 +7,7 @@ interface BackendInfo {
   status: string;
   removable: boolean;
   enabled: boolean;
+  color?: string;
 }
 
 interface SidebarProps {
@@ -132,6 +133,9 @@ function BackendItem({ backend, onRemove, onToggle }: {
         title={backend.enabled ? "Disable events from this backend" : "Enable events from this backend"}
       />
       <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: statusColors[backend.status] ?? "#94a3b8", display: "inline-block", flexShrink: 0 }} />
+      {backend.color && (
+        <span style={{ width: "10px", height: "10px", borderRadius: "2px", background: backend.color, display: "inline-block", flexShrink: 0 }} />
+      )}
       <span style={{ flex: 1, fontSize: "13px", color: "#c8cdd8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {backend.clusterName || backend.url}
       </span>
