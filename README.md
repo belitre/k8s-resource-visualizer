@@ -5,6 +5,8 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/belitre/k8s-resource-visualizer)](go.mod)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
+> **⚠️ Work in Progress** — This project is under active development and is not ready for production use.
+
 A real-time Kubernetes resource visualizer with a dark-themed UI. Watches actual resources (Pods, Deployments, Services, etc.) for CREATED, UPDATED, and DELETED actions and displays them as colored cards on a canvas. Deploy one backend per cluster and connect the frontend to multiple backends to see resource changes from all clusters.
 
 ## Architecture
