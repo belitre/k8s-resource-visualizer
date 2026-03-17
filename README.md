@@ -7,6 +7,21 @@
 
 > **⚠️ Work in Progress** — This project is under active development and is not ready for production use.
 
+> This project was entirely built with [Claude Code](https://claude.ai/claude-code) using the **claude-sonnet-4-6** model.
+
+## Table of Contents
+
+- [Architecture](#architecture)
+- [Prerequisites](#prerequisites)
+- [Project Structure](#project-structure)
+- [Development](#development)
+- [Configuration](#configuration)
+- [API Endpoints](#api-endpoints)
+- [Docker](#docker)
+- [Helm Deployment](#helm-deployment)
+- [CI/CD](#cicd)
+- [License](#license)
+
 A real-time Kubernetes resource visualizer with a dark-themed UI. Watches actual resources (Pods, Deployments, Services, etc.) for CREATED, UPDATED, and DELETED actions and displays them as colored cards on a canvas. Deploy one backend per cluster and connect the frontend to multiple backends to see resource changes from all clusters.
 
 ## Architecture
@@ -399,7 +414,3 @@ The workflow builds everything, pushes the Docker image to `ghcr.io/belitre/k8s-
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE) for details.
-
----
-
-> This project was entirely built with [Claude Code](https://claude.ai/claude-code) using the **claude-sonnet-4-6** model.
