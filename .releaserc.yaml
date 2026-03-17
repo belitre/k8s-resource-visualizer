@@ -62,7 +62,7 @@ plugins:
             hidden: true
 
   - - "@semantic-release/exec"
-    - prepareCmd: "echo ${nextRelease.version} > .version && VERSION=${nextRelease.version} make docker-build-push"
+    - prepareCmd: "echo ${nextRelease.version} > .version && VERSION=${nextRelease.version} make docker-login docker-build-push"
 
   - - "@semantic-release/github"
     - assets:
