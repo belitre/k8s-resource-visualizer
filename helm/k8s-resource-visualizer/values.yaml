@@ -42,6 +42,10 @@ backendConfig: {}
 #   include: []  # if set, ONLY watch these namespaces
 #   exclude:
 #     - kube-system
+# remoteBackends:  # other cluster backends this instance will proxy to
+#   - name: cluster-b
+#     url: http://k8s-resource-visualizer.default.svc.cluster.local:8080
+#     color: "#f59e0b"  # optional hex color shown in the UI
 
 serviceAccount:
   create: true
