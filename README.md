@@ -22,6 +22,7 @@
 - [Docker](#docker)
 - [Helm Deployment](#helm-deployment)
 - [CI/CD](#cicd)
+- [Credits](#credits)
 - [License](#license)
 
 ## Overview
@@ -36,8 +37,9 @@ Key features:
 - **Proxy mode** — a single backend can proxy WebSocket and REST traffic to other backends, so the browser only needs to reach one URL
 - **Global filters** — shared namespace and resource type filters across all clusters; per-backend enable/disable toggle
 - **Grouped resource filter** — resource types are displayed as a three-level tree (Group → Version → Resource) with tristate checkboxes for batch select/deselect
-- **Smart filter auto-select** — new namespaces/resources are auto-selected only when the user already has filters active; previously deselected items are never re-selected
+- **Smart filter auto-select** — on startup only `defaultResources` are selected; new CRDs added later are auto-selected if the user already has resources selected; deleted-and-recreated CRDs are treated as new again
 - **Non-namespaced resources** — cluster-scoped resources (ClusterRole, Node, etc.) are tracked under a "Non-namespaced" filter entry
+- **Group-aware cards** — event cards show a corner icon badge identifying the API group (Deployment, CronJob, Ingress, RBAC, StorageClass, CRD, cert-manager, Argo, Flux, Prometheus, and more)
 - **Configurable** — include/exclude specific resources and namespaces via a YAML config file
 
 ## Architecture
@@ -122,9 +124,10 @@ The frontend can also connect directly to multiple backends — useful for local
 - Discovers proxy backends automatically via `GET /api/proxy-backends` and opens proxied connections through the primary backend
 - Opens a WebSocket per backend for live event streaming
 - Handles `resources_updated` and `namespaces_updated` WebSocket messages to keep filters in sync without page reload
-- Displays events as draggable cards (green = Created, yellow = Updated, red = Deleted)
-- Cards show cluster, action, resource name, resource type, and namespace badge (when applicable)
-- Cards fade out after a configurable duration; clicking or dragging resets the timer
+- Displays events as draggable cards colour-coded by action: teal (CREATED), lavender (UPDATED), rose (DELETED)
+- Cards show cluster name, action, resource name, resource type, namespace badge, and a corner icon badge identifying the API group
+- Cards are fully visible for 50% of their duration, then fade out smoothly over the remaining 50%
+- Clicking or dragging a card resets its expiry timer
 - Duplicate events (same resource + action within the expiry window) are merged and show a repeat counter
 - **Global namespace filter** — union of all namespaces across connected clusters; removed namespaces disappear automatically
 - **Global resource type filter** — three-level tree (Group → Version → Resource) with tristate checkboxes; reflects the live union across all clusters
@@ -165,17 +168,20 @@ The frontend can also connect directly to multiple backends — useful for local
 │   └── src/
 │       ├── App.tsx              # Root: event state, global filters, backend orchestration
 │       ├── types.ts             # VisualEvent, ResourceInfo, ServerMessage discriminated union
+│       ├── assets/
+│       │   └── k8s-icons/       # SVG icons: Kubernetes community icons + CNCF project icons
 │       ├── components/
 │       │   ├── Sidebar.tsx      # Backend list + toggle, global namespace/resource tree filters
 │       │   ├── EventCanvas.tsx  # Positioned canvas for event cards
-│       │   └── EventCard.tsx    # Draggable card with fade animation and namespace badge
+│       │   └── EventCard.tsx    # Draggable card with fade animation, colour theme, and group icon badge
 │       └── hooks/
 │           ├── useBackendConnection.ts  # WS + REST per backend; handles all server message types
 │           └── useDrag.ts              # Drag logic for event cards
 ├── scripts/
 │   ├── kind-dev-start.sh        # Start two-cluster kind dev environment
 │   ├── kind-dev-stop.sh         # Stop and clean up kind dev environment
-│   └── kind-dev-reload.sh       # Rebuild Go binary and restart backends (frontend HMR needs no restart)
+│   ├── kind-dev-reload.sh       # Rebuild Go binary and restart backends (frontend HMR needs no restart)
+│   └── test-resources.sh        # Create/update/delete resources on both clusters for manual testing
 ├── helm/
 │   └── k8s-resource-visualizer/ # Helm chart
 │       ├── Chart.yaml
@@ -239,6 +245,13 @@ make kind-dev-stop
 - Vite dev server on `:5173` (proxies `/api`, `/ws`, and `/proxy/` to `:8080`)
 
 Logs are written to `/tmp/kind-backend-a.log`, `/tmp/kind-backend-b.log`, and `/tmp/kind-frontend.log`.
+
+To create a variety of test resources across both clusters (useful for verifying card colours, icons, and filter behaviour):
+
+```bash
+make kind-test-resources          # default 3s delay between create/update/delete waves
+make kind-test-resources DELAY=5  # slower, easier to read cards as they appear
+```
 
 ## Configuration
 
@@ -361,7 +374,7 @@ Sent when a CRD is added or removed, causing the backend to rediscover and updat
 }
 ```
 
-`key` matches `VisualEvent.resourceType` and is used for filter matching. The frontend recomputes the global resource list as the live union across all connected backends — resources disappear from the filter as soon as no backend reports them. New resource types are auto-selected if the user already has any resources selected; otherwise they appear unchecked.
+`key` matches `VisualEvent.resourceType` and is used for filter matching. The frontend recomputes the global resource list as the live union across all connected backends — resources disappear from the filter as soon as no backend reports them. On initial backend connection only `defaultResources` are auto-selected. Afterwards, new resource types (e.g. a freshly installed CRD) are auto-selected if the user already has any resources selected; resources that are deleted and re-created are treated as new again.
 
 ### `namespaces_updated` — namespace list changed
 
@@ -575,6 +588,24 @@ The [release workflow](.github/workflows/release.yml) runs on push to `main` usi
 | `chore:`, `test:`, `build:`, `ci:` | no release |
 
 The workflow builds everything, pushes the Docker image to `ghcr.io/belitre/k8s-resource-visualizer`, and creates a GitHub release with changelog.
+
+## Credits
+
+### Kubernetes Resource Icons
+
+The resource-type icons shown on event cards are from the
+[Kubernetes Community Icons](https://github.com/kubernetes/community/tree/master/icons)
+set, licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
+
+### CNCF Project Icons
+
+Icons for cert-manager, Argo, Flux, and Prometheus are sourced from the
+[CNCF Artwork repository](https://github.com/cncf/artwork).
+These are trademarks of their respective owners and are used here solely to identify
+the corresponding Kubernetes API groups. Use is subject to the
+[Linux Foundation Trademark Usage Guidelines](https://www.linuxfoundation.org/trademark-usage/).
+
+> The Kubernetes logo is a registered trademark of The Linux Foundation.
 
 ## License
 

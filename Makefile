@@ -1,4 +1,4 @@
-.PHONY: all build build-backend build-frontend test test-backend test-frontend lint lint-backend lint-frontend clean dev dev-backend dev-frontend kind-dev-start kind-dev-stop kind-dev-reload docker-login docker-build docker-push docker-build-push install-semantic-release release release-dry-run frontend-dist-placeholder ci-frontend helm-lint helm-validate helm-login helm-package helm-push
+.PHONY: all build build-backend build-frontend test test-backend test-frontend lint lint-backend lint-frontend clean dev dev-backend dev-frontend kind-dev-start kind-dev-stop kind-dev-reload kind-test-resources docker-login docker-build docker-push docker-build-push install-semantic-release release release-dry-run frontend-dist-placeholder ci-frontend helm-lint helm-validate helm-login helm-package helm-push
 
 IMAGE ?= ghcr.io/belitre/k8s-resource-visualizer
 VERSION ?= latest
@@ -106,6 +106,9 @@ kind-dev-stop:
 
 kind-dev-reload:
 	@bash scripts/kind-dev-reload.sh
+
+kind-test-resources:
+	@bash scripts/test-resources.sh $(DELAY)
 
 # ── Docker ───────────────────────────────────────────────────────────────────
 

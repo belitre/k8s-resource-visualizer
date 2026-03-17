@@ -90,6 +90,8 @@ export default function App() {
   // Maps backend URL → configured color from config.json
   const configColorsRef = useRef<Map<string, string>>(new Map());
   const defaultResourcesRef = useRef<DefaultResourceRule[]>([]);
+  // Tracks backends whose initial resource list has already been processed
+  const initializedBackendsRef = useRef<Set<string>>(new Set());
   // Global filter state shared across all clusters
   const [globalFilter, setGlobalFilter] = useState<GlobalFilter>({
     selectedNamespaces: new Set(),
@@ -150,7 +152,7 @@ export default function App() {
     setEvents((prev) => prev.map((e) => e.id === id ? { ...e, x, y } : e));
   }, []);
 
-  const autoSelectGlobal = useCallback((namespaces: string[], resources: ResourceInfo[]) => {
+  const autoSelectGlobal = useCallback((namespaces: string[], resources: ResourceInfo[], isInitialLoad: boolean) => {
     setGlobalFilter((prev) => {
       const newNs = new Set(prev.selectedNamespaces);
       const newRes = new Set(prev.selectedResources);
@@ -176,7 +178,11 @@ export default function App() {
         if (!newKnownRes.has(r.key)) {
           newKnownRes.add(r.key);
           changed = true;
-          if (matchesDefaultResource(r, defaultResourcesRef.current)) {
+          // On a backend's initial load, only select resources matching defaultResources.
+          // For subsequent updates (new CRDs), also auto-select if the user already has
+          // resources selected — mirrors the namespace auto-select behaviour.
+          const hasResourcesSelected = prev.selectedResources.size > 0;
+          if (matchesDefaultResource(r, defaultResourcesRef.current) || (!isInitialLoad && hasResourcesSelected)) {
             newRes.add(r.key);
           }
         }
@@ -234,7 +240,9 @@ export default function App() {
   const handleConnectionChange = useCallback((url: string, info: BackendInfo) => {
     setBackendInfoMap((prev) => new Map(prev).set(url, info));
     if (info.clusterName) {
-      autoSelectGlobal(info.namespaces, info.resources);
+      const isInitialLoad = !initializedBackendsRef.current.has(url);
+      if (isInitialLoad && info.resources.length > 0) initializedBackendsRef.current.add(url);
+      autoSelectGlobal(info.namespaces, info.resources, isInitialLoad);
       const color = getClusterColor(info.clusterName, configColorsRef.current.get(url));
       setClusterColorMap((prev) =>
         prev.get(info.clusterName) === color ? prev : new Map(prev).set(info.clusterName, color)
@@ -303,6 +311,26 @@ export default function App() {
     }
     return Array.from(map.values()).sort((a, b) => a.key.localeCompare(b.key));
   }, [backendInfoMap]);
+
+  // When resources or namespaces disappear from all backends, remove them from
+  // knownResources/knownNamespaces so they are treated as new if they reappear.
+  useEffect(() => {
+    const currentKeys = new Set(allResources.map((r) => r.key));
+    setGlobalFilter((prev) => {
+      const newKnownRes = new Set([...prev.knownResources].filter((k) => currentKeys.has(k)));
+      if (newKnownRes.size === prev.knownResources.size) return prev;
+      return { ...prev, knownResources: newKnownRes };
+    });
+  }, [allResources]);
+
+  useEffect(() => {
+    const currentNs = new Set(allNamespaces);
+    setGlobalFilter((prev) => {
+      const newKnownNs = new Set([...prev.knownNamespaces].filter((ns) => currentNs.has(ns)));
+      if (newKnownNs.size === prev.knownNamespaces.size) return prev;
+      return { ...prev, knownNamespaces: newKnownNs };
+    });
+  }, [allNamespaces]);
 
   // Set of cluster names whose backend is disabled — used to filter events
   const disabledClusters = useMemo(() => {
