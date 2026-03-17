@@ -4,9 +4,18 @@ import { Sidebar } from "./components/Sidebar";
 import { useBackendConnection } from "./hooks/useBackendConnection";
 import { mergeEvent } from "./utils/eventMerge";
 import { getClusterColor } from "./utils/clusterColor";
-import type { ResourceInfo, VisualEvent } from "./types";
+import type { DefaultResourceRule, ResourceInfo, VisualEvent } from "./types";
 
 type BackendEntry = string | { url: string; color?: string };
+
+function matchesDefaultResource(r: ResourceInfo, rules: DefaultResourceRule[]): boolean {
+  return rules.some(
+    (rule) =>
+      (rule.group === "*" || rule.group === r.group) &&
+      (rule.version === "*" || rule.version === r.version) &&
+      (rule.resource === "*" || rule.resource === r.resource)
+  );
+}
 
 interface BackendInfo {
   clusterName: string;
@@ -80,6 +89,7 @@ export default function App() {
   const [clusterColorMap, setClusterColorMap] = useState<Map<string, string>>(new Map());
   // Maps backend URL → configured color from config.json
   const configColorsRef = useRef<Map<string, string>>(new Map());
+  const defaultResourcesRef = useRef<DefaultResourceRule[]>([]);
   // Global filter state shared across all clusters
   const [globalFilter, setGlobalFilter] = useState<GlobalFilter>({
     selectedNamespaces: new Set(),
@@ -91,7 +101,8 @@ export default function App() {
   useEffect(() => {
     fetch("/config.json")
       .then((r) => r.json())
-      .then((config: { selfColor?: string; backends?: BackendEntry[] }) => {
+      .then((config: { selfColor?: string; backends?: BackendEntry[]; defaultResources?: DefaultResourceRule[] }) => {
+        if (config.defaultResources) defaultResourcesRef.current = config.defaultResources;
         const colorMap = new Map<string, string>();
         if (config.selfColor) colorMap.set(selfUrl, config.selfColor);
         const extraUrls: string[] = [];
@@ -102,17 +113,19 @@ export default function App() {
           if (color) colorMap.set(url, color);
         }
         configColorsRef.current = colorMap;
-        if (extraUrls.length === 0) return;
-        setConfigBackends((prev) => new Set([...prev, ...extraUrls]));
-        setBackendUrls((prev) => {
-          const next = [...prev];
-          for (const url of extraUrls) {
-            if (!next.includes(url)) next.push(url);
-          }
-          return next;
-        });
+        if (extraUrls.length > 0) {
+          setConfigBackends((prev) => new Set([...prev, ...extraUrls]));
+          setBackendUrls((prev) => {
+            const next = [...prev];
+            for (const url of extraUrls) {
+              if (!next.includes(url)) next.push(url);
+            }
+            return next;
+          });
+        }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setConfigLoaded(true));
   }, [selfUrl]);
 
   // Remove expired events on a 500ms tick, regardless of filter visibility
@@ -152,7 +165,6 @@ export default function App() {
         if (!newKnownNs.has(ns)) {
           newKnownNs.add(ns);
           changed = true;
-          // Auto-select if first ever namespace seen OR user has at least one real namespace selected
           const hasRealNsSelected = [...newNs].some((n) => n !== "");
           if (prev.knownNamespaces.size === 0 || hasRealNsSelected) {
             newNs.add(ns);
@@ -164,8 +176,7 @@ export default function App() {
         if (!newKnownRes.has(r.key)) {
           newKnownRes.add(r.key);
           changed = true;
-          // Auto-select if first ever resource seen OR user has some resources selected
-          if (prev.knownResources.size === 0 || newRes.size > 0) {
+          if (matchesDefaultResource(r, defaultResourcesRef.current)) {
             newRes.add(r.key);
           }
         }
@@ -315,6 +326,7 @@ export default function App() {
     });
   }, [events, disabledClusters, globalFilter.selectedNamespaces, globalFilter.selectedResources]);
 
+  const [configLoaded, setConfigLoaded] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   return (
@@ -343,7 +355,7 @@ export default function App() {
         onPositionChange={handlePositionChange}
         onTimerRestart={handleTimerRestart}
       />
-      {backendUrls.map((url) => (
+      {configLoaded && backendUrls.map((url) => (
         <BackendBridge
           key={url}
           url={url}

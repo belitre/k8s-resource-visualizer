@@ -1,1 +1,16 @@
-{}
+{
+  "defaultResources": [
+    { "group": "apps",                   "version": "*", "resource": "deployments"  },
+    { "group": "apps",                   "version": "*", "resource": "statefulsets" },
+    { "group": "apps",                   "version": "*", "resource": "daemonsets"   },
+    { "group": "batch",                  "version": "*", "resource": "jobs"         },
+    { "group": "batch",                  "version": "*", "resource": "cronjobs"     },
+    { "group": "",                       "version": "*", "resource": "pods"         },
+    { "group": "",                       "version": "*", "resource": "namespaces"   },
+    { "group": "",                       "version": "*", "resource": "configmaps"   },
+    { "group": "",                       "version": "*", "resource": "secrets"      },
+    { "group": "",                       "version": "*", "resource": "services"     },
+    { "group": "networking.k8s.io",      "version": "*", "resource": "ingresses"    },
+    { "group": "gateway.networking.k8s.io", "version": "*", "resource": "httproutes" }
+  ]
+}

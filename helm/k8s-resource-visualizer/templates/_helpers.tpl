@@ -79,5 +79,8 @@ Namespace filtering is enforced by the application, not RBAC.
 {{- if $backends -}}
 {{- $_ := set $cfg "backends" $backends -}}
 {{- end -}}
+{{- if .Values.frontend.defaultResources -}}
+{{- $_ := set $cfg "defaultResources" .Values.frontend.defaultResources -}}
+{{- end -}}
 {{- $cfg | toJson -}}
 {{- end }}

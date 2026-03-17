@@ -15,6 +15,13 @@ export interface VisualEvent {
   refreshedAt: number; // ms timestamp — when the card was last refreshed (same as createdAt if never refreshed)
 }
 
+// Rule for auto-selecting resources on startup. Use "*" to match any value.
+export interface DefaultResourceRule {
+  group: string;
+  version: string;
+  resource: string;
+}
+
 export interface ResourceInfo {
   group: string;
   version: string;
