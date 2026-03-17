@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: k8s-resource-visualizer
+  repository: ghcr.io/belitre/k8s-resource-visualizer
   tag: latest
   pullPolicy: IfNotPresent
 
