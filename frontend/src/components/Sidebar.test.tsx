@@ -13,8 +13,6 @@ function renderSidebar(overrides = {}) {
     backends: [],
     duration: 10,
     onDurationChange: vi.fn(),
-    onAddBackend: vi.fn(),
-    onRemoveBackend: vi.fn(),
     onToggleBackend: vi.fn(),
     namespaces: [],
     selectedNamespaces: new Set<string>(),
@@ -24,6 +22,8 @@ function renderSidebar(overrides = {}) {
     selectedResources: new Set<string>(),
     onToggleResource: vi.fn(),
     onToggleAllResources: vi.fn(),
+    nameFilter: "",
+    onNameFilterChange: vi.fn(),
     collapsed: false,
     onToggleCollapse: vi.fn(),
   };
@@ -36,7 +36,6 @@ function makeBackend(overrides = {}) {
     url: "http://localhost:8080",
     clusterName: "prod",
     status: "connected",
-    removable: true,
     enabled: true,
     ...overrides,
   };
@@ -52,28 +51,6 @@ describe("Sidebar", () => {
   it("shows no-backends message when empty", () => {
     renderSidebar();
     expect(screen.getByText(/No backends connected/)).toBeInTheDocument();
-  });
-
-  it("calls onAddBackend when adding a URL", () => {
-    const { props } = renderSidebar();
-    const input = screen.getByPlaceholderText("http://backend-url:8080");
-    fireEvent.change(input, { target: { value: "http://localhost:8080" } });
-    fireEvent.click(screen.getByText("Add"));
-    expect(props.onAddBackend).toHaveBeenCalledWith("http://localhost:8080");
-  });
-
-  it("calls onAddBackend on Enter key", () => {
-    const { props } = renderSidebar();
-    const input = screen.getByPlaceholderText("http://backend-url:8080");
-    fireEvent.change(input, { target: { value: "http://localhost:8080" } });
-    fireEvent.keyDown(input, { key: "Enter" });
-    expect(props.onAddBackend).toHaveBeenCalledWith("http://localhost:8080");
-  });
-
-  it("does not add empty URL", () => {
-    const { props } = renderSidebar();
-    fireEvent.click(screen.getByText("Add"));
-    expect(props.onAddBackend).not.toHaveBeenCalled();
   });
 
   it("renders backend with cluster name and status dot", () => {
@@ -98,17 +75,6 @@ describe("Sidebar", () => {
       cb.getAttribute("title")?.includes("Enable events")
     )!;
     expect(checkbox).not.toBeChecked();
-  });
-
-  it("calls onRemoveBackend when clicking remove button", () => {
-    const { props } = renderSidebar({ backends: [makeBackend()] });
-    fireEvent.click(screen.getByTitle("Remove backend"));
-    expect(props.onRemoveBackend).toHaveBeenCalledWith("http://localhost:8080");
-  });
-
-  it("does not show remove button for non-removable backends", () => {
-    renderSidebar({ backends: [makeBackend({ removable: false })] });
-    expect(screen.queryByTitle("Remove backend")).not.toBeInTheDocument();
   });
 
   it("collapses and expands backends list", () => {
